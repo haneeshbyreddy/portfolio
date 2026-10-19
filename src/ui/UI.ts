@@ -3,45 +3,62 @@ import type { Desk } from '../office/Office';
 import { DEPARTMENTS, projects, type Project } from '../data/projects';
 import { site } from '../config/site';
 import { Ambience } from './Ambience';
-import { arrowLeft, arrowRight, arrowUpRight, close, emblem, expand, recentre } from './icons';
+import { Pointer } from './Pointer';
+import {
+  arrowUpRight, chevronLeft, chevronRight, disciplineGlyph, emblem, expand, mark, move, reset, speaker, xmark,
+} from './icons';
 
 const $ = <T extends HTMLElement = HTMLElement>(root: ParentNode, sel: string) => root.querySelector(sel) as T;
-const pad = (n: number) => String(n).padStart(2, '0');
 
-const letters = (word: string) =>
-  [...word].map((ch, i) => `<span style="--i:${i}">${ch}</span>`).join('');
+const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+/** Small counts read better as words in a headline: "Seven at work." */
+const words = (n: number) => {
+  const w = n < 20 ? ONES[n] : n < 100 ? TENS[Math.floor(n / 10)] + (n % 10 ? `-${ONES[n % 10]}` : '') : String(n);
+  return w.charAt(0).toUpperCase() + w.slice(1);
+};
 
-const spaced = (str: string) =>
-  `<div class="spread">${[...str].map((c) => `<span>${c === ' ' ? '&nbsp;' : c}</span>`).join('')}</div>`;
+/** A project's app icon: its own background, its accent, its department's glyph. */
+const tile = (p: Project | null, size: 'sm' | 'md' | 'lg' = 'md') =>
+  p
+    ? `<span class="tile tile--${size}" style="--tile-bg:${p.palette.bg};--tile-fg:${p.palette.accent}">${disciplineGlyph[p.discipline]}</span>`
+    : `<span class="tile tile--${size} tile--vacant">${disciplineGlyph.vacant}</span>`;
+
+const info = (rows: [string, string][]) =>
+  `<dl class="info">${rows.map(([k, v]) => `<div class="info__row"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 
 function statsFor(p: Project): [string, string][] {
   switch (p.discipline) {
-    case 'landing': return [['+38%', 'Sign-ups'], ['0.9s', 'LCP'], ['6 wk', 'To launch']];
-    case 'saas': return [['−42%', 'Time to insight'], ['120+', 'Components'], ['4.8', 'CSAT']];
+    case 'landing': return [['+38%', 'Sign-ups'], ['0.9s', 'Largest paint'], ['6 wk', 'To launch']];
+    case 'saas': return [['−42%', 'Time to insight'], ['120+', 'Components'], ['4.8', 'Customer score']];
     case 'brand': return [['40', 'SKUs'], ['3', 'Retail markets'], ['1', 'Mark, endless uses']];
-    case 'film': return [['90s', 'Runtime'], ['2.4M', 'Views'], ['100%', 'CG']];
-    case 'app': return [['1.2M', 'Users'], ['4.8★', 'App Store'], ['−31%', 'Support tickets']];
+    case 'film': return [['90s', 'Runtime'], ['2.4M', 'Views'], ['100%', 'Computer generated']];
+    case 'app': return [['1.2M', 'Users'], ['4.8', 'App Store rating'], ['−31%', 'Support tickets']];
   }
 }
 
+type DockState = 'hint' | 'reset' | 'none';
+
 export class UI {
   private root: HTMLElement;
-  private label!: HTMLElement;
-  private cursor!: HTMLElement;
-  private panel!: HTMLElement;
+  private tag!: HTMLElement;
+  private sheet!: HTMLElement;
   private caseEl!: HTMLElement;
   private dir!: HTMLElement;
-  private hint!: HTMLElement;
-  private recentre!: HTMLElement;
+  private dock!: HTMLElement;
+  private pointer: Pointer | null = null;
   private hovered: Desk | null = null;
   private focused: Desk | null = null;
   private focusedProject: Project | null = null;
-  private mouse = { x: innerWidth / 2, y: innerHeight / 2 };
-  private ring = { x: innerWidth / 2, y: innerHeight / 2 };
   private audio = new Ambience();
   private arriveTimer = 0;
+  private heightTimer = 0;
   private caseOpen = false;
   private caseGen = 0;
+  private hintSpent = false;
+  private dockState: DockState | null = null;
+  private last = performance.now();
   private fine = matchMedia('(pointer: fine)').matches;
 
   constructor(private exp: Experience, host: HTMLElement) {
@@ -58,107 +75,121 @@ export class UI {
   private build() {
     const total = this.exp.office.desks.length;
     const filled = this.exp.roster.length;
-    const [w1, w2] = site.wordmark;
-    const [first, ...rest] = site.name.split(' ');
     const touch = !this.fine;
 
     this.root.innerHTML = /* html */ `
       <div class="scrim"></div>
 
-      <h1 class="wm wm--top" aria-label="${w1}${w2} — ${site.name}">
-        <span class="wm__clip"><span class="wm__word">${letters(w1)}</span></span>
-      </h1>
-      <div class="wm wm--bottom" aria-hidden="true">
-        <span class="wm__clip"><span class="wm__word">${letters(w2)}</span></span>
-      </div>
-
-      <div class="meta caps">
-        <div class="justify reveal" style="--d:0"><span>Portfolio</span><span>Vol. ${new Date().getFullYear() - 2000}</span></div>
-        <div class="reveal" style="--d:60">${spaced(`${site.since} - ?`)}</div>
-        <div class="justify reveal" style="--d:120"><span>Desks</span><span>${pad(filled)} / ${pad(total)}</span></div>
-        <div class="justify reveal" style="--d:180"><span>${first}</span><span>${rest.join(' ')}</span></div>
-        <nav class="nav mono reveal" style="--d:260" aria-label="Primary">
-          <button data-act="directory">Index</button>
-          <button data-act="about">About</button>
-          <a href="mailto:${site.email}" data-cursor="link">Contact</a>
-          <button data-act="sound" aria-pressed="false" aria-label="Toggle sound"><span class="sound-bars"><i></i><i></i><i></i></span>Sound</button>
+      <header class="bar">
+        <button class="brand" data-act="home" aria-label="${site.title}, back to the establishing shot">
+          <span class="brand__icon">${mark}</span><span class="brand__name">${site.title}</span>
+        </button>
+        <nav class="toolbar glass" aria-label="Primary">
+          <button class="toolbar__item" data-act="directory">Index</button>
+          <button class="toolbar__item toolbar__item--about" data-act="about">About</button>
+          <a class="toolbar__item" href="mailto:${site.email}">Contact</a>
+          <span class="toolbar__sep" aria-hidden="true"></span>
+          <button class="toolbar__item toolbar__item--icon" data-act="sound" aria-pressed="false" aria-label="Sound">${speaker}</button>
         </nav>
+      </header>
+
+      <section class="hero">
+        <p class="hero__eyebrow r" style="--d:0">${site.name}</p>
+        <h1 class="hero__title r" style="--d:70">${site.headline.replace(/ (\S+)$/, '&nbsp;$1')}</h1>
+        <p class="hero__sub r" style="--d:140">${words(filled)} at work. ${words(total - filled)} waiting for&nbsp;yours.</p>
+      </section>
+
+      <div class="dock glass">
+        <div class="dock__face dock__hint" aria-hidden="true">
+          ${move}<span>Drag to explore</span><i></i><span>${touch ? 'Pinch to zoom' : 'Scroll to zoom'}</span><i></i><span>${touch ? 'Tap a desk' : 'Click a desk'}</span>
+        </div>
+        <button class="dock__face dock__reset" data-act="recentre" tabindex="-1">
+          ${reset}<span>Reset view</span>${touch ? '' : '<kbd>esc</kbd>'}
+        </button>
       </div>
 
-      <footer class="credits caps">
-        <div class="reveal" style="--d:300">${emblem()}</div>
-        ${site.credits.map(([a, b], i) => `<div class="justify reveal" style="--d:${340 + i * 50}"><span>${a}</span><span>${b}</span></div>`).join('')}
-      </footer>
+      <div class="tag" aria-hidden="true"><div class="tag__card glass"></div></div>
 
-      <div class="hint mono reveal" style="--d:900"><span class="hint__dot"></span>${touch ? 'Drag to explore · Pinch to zoom · Tap a desk' : 'Drag to explore · Scroll to zoom · Click a desk'}</div>
-      <button class="chip mono recentre" data-act="recentre" aria-label="Reset the view" tabindex="-1">${recentre}<span>Reset view</span>${touch ? '' : '<kbd>Esc</kbd>'}</button>
-
-      <div class="label" aria-hidden="true"><div class="label__stem"></div><div class="label__inner"></div></div>
-
-      <div class="topbar">
-        <button class="chip mono" data-act="back" aria-label="Back to the floor">${arrowLeft}<span>Floor</span></button>
-        <div class="crumbs mono"></div>
-      </div>
-
-      <section class="panel" aria-live="polite"></section>
+      <section class="sheet" aria-live="polite">
+        <div class="sheet__window glass glass--window">
+          <div class="sheet__grabber" aria-hidden="true"></div>
+          <div class="sheet__content"></div>
+        </div>
+        <nav class="ornament glass" aria-label="Walk the floor">
+          <button class="ornament__btn" data-act="prev" aria-label="Previous desk">${chevronLeft}</button>
+          <div class="dots" aria-hidden="true"></div>
+          <span class="ornament__label">Open desks</span>
+          <button class="ornament__btn" data-act="next" aria-label="Next desk">${chevronRight}</button>
+        </nav>
+      </section>
 
       <section class="case" aria-hidden="true">
         <div class="case__stage"><div class="case__screen"></div></div>
         <div class="case__body"></div>
-        <button class="chip mono case__close" data-act="case-close" aria-label="Close case study">${close}<span>Close</span></button>
+        <button class="icon-btn glass case__close" data-act="case-close" aria-label="Close case study">${xmark}</button>
       </section>
 
       <section class="directory" aria-hidden="true">
-        <div>
-          <h2>Index</h2>
-          <div class="rows">
-            ${this.exp.roster.map(({ project: p, desk }, i) => /* html */ `
-              <button class="row" style="--i:${i}" data-project="${p.id}">
-                <span class="mono">${pad(i + 1)}</span>
-                <span class="row__title"><span class="swatch" style="--sw:${p.palette.accent}"></span>${p.title}</span>
-                <span class="caps">${DEPARTMENTS[p.discipline].name}</span>
-                <span class="mono">${p.year}</span>
-                <span class="mono">Desk ${pad(desk.number)}</span>
-              </button>`).join('')}
-            <button class="row row--vacant" style="--i:${filled}" data-act="vacant">
-              <span class="mono">—</span>
-              <span class="row__title">${total - filled} desks unassigned</span>
-              <span class="caps">Yours?</span>
-              <span class="mono"></span>
-              <span class="mono">Visit ↗</span>
-            </button>
+        <div class="directory__window glass glass--window" role="dialog" aria-label="Index">
+          <header class="directory__head">
+            <h2 class="directory__title">Index</h2>
+            <button class="icon-btn icon-btn--fill" data-act="directory-close" aria-label="Close index">${xmark}</button>
+          </header>
+          <div class="directory__body">
+            <div class="directory__col">
+              <p class="section-label">${words(filled)} projects</p>
+              <div class="group">
+                ${this.exp.roster.map(({ project: p, desk }, i) => /* html */ `
+                  <button class="row" style="--i:${i}" data-project="${p.id}">
+                    ${tile(p, 'md')}
+                    <span class="row__text"><span class="row__title">${p.title}</span><span class="row__sub">${DEPARTMENTS[p.discipline].kind} · ${p.year}</span></span>
+                    <span class="row__meta">Desk ${desk.number}</span>
+                    <span class="row__chev">${chevronRight}</span>
+                  </button>`).join('')}
+              </div>
+              <div class="group">
+                <button class="row" style="--i:${filled}" data-act="vacant">
+                  ${tile(null, 'md')}
+                  <span class="row__text"><span class="row__title">${words(total - filled)} open desks</span><span class="row__sub">Your project could be next</span></span>
+                  <span class="row__meta"></span>
+                  <span class="row__chev">${chevronRight}</span>
+                </button>
+              </div>
+            </div>
+            <aside class="directory__col" id="about">
+              <p class="section-label">About</p>
+              <div class="group group--text">
+                <p class="about__lead">${site.name}</p>
+                <p>${site.about}</p>
+                <p class="about__note">${site.discipline}. Independent since ${site.since}.</p>
+              </div>
+              <div class="group">
+                <a class="row row--link" href="mailto:${site.email}"><span class="row__text"><span class="row__title">Email</span></span><span class="row__meta">${site.email}</span><span class="row__chev">${arrowUpRight}</span></a>
+                ${site.links.map((l) => `<a class="row row--link" href="${l.href}" target="_blank" rel="noopener"><span class="row__text"><span class="row__title">${l.label}</span></span><span class="row__meta"></span><span class="row__chev">${arrowUpRight}</span></a>`).join('')}
+              </div>
+            </aside>
           </div>
         </div>
-        <aside class="about" id="about">
-          <div class="caps" style="color:var(--paper)">About</div>
-          <p>${site.about}</p>
-          <p>${site.discipline}. Independent since ${site.since}.</p>
-          <div class="links">
-            <a href="mailto:${site.email}" class="mono">${site.email}<span>↗</span></a>
-            ${site.links.map((l) => `<a href="${l.href}" class="mono" target="_blank" rel="noopener">${l.label}<span>↗</span></a>`).join('')}
-          </div>
-        </aside>
-        <button class="chip mono directory__close" data-act="directory-close" aria-label="Close index">${close}<span>Close</span></button>
       </section>
 
-      <div class="loader">
-        <div class="loader__center">${emblem()}<div class="mono" style="opacity:.8">A portfolio in an open field</div></div>
-        <div class="loader__status mono">Preparing the floor</div>
-        <div class="loader__pct mono">00%</div>
-        <div class="loader__bar"><i></i></div>
+      <div class="loader" role="status">
+        <div class="loader__center">
+          ${emblem('loader__emblem')}
+          <div class="loader__bar" aria-hidden="true"><i></i></div>
+          <span class="sr-only loader__status">Loading</span>
+        </div>
       </div>
-
-      <div class="cursor is-hidden" aria-hidden="true"><div class="cursor__ring"><span>View</span></div><div class="cursor__dot"></div></div>
     `;
 
-    this.label = $(this.root, '.label');
-    this.cursor = $(this.root, '.cursor');
-    this.panel = $(this.root, '.panel');
+    this.tag = $(this.root, '.tag');
+    this.sheet = $(this.root, '.sheet');
     this.caseEl = $(this.root, '.case');
     this.dir = $(this.root, '.directory');
-    this.hint = $(this.root, '.hint');
-    this.recentre = $(this.root, '.recentre');
-    if (this.fine) document.body.classList.add('has-cursor');
+    this.dock = $(this.root, '.dock');
+    if (this.fine) {
+      document.body.classList.add('has-pointer');
+      this.pointer = new Pointer(this.root);
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -169,7 +200,7 @@ export class UI {
     this.load.target = Math.max(this.load.target, p);
   }
 
-  /** The counter never outruns ~1.6s, so the one-sheet moment always lands. */
+  /** The bar never outruns ~1.6s, so the loading moment always lands. */
   private tickLoader() {
     const L = this.load;
     if (L.done) return;
@@ -178,15 +209,14 @@ export class UI {
     L.last = now;
     L.shown = Math.min(L.target, L.shown + dt / 1.6);
     $(this.root, '.loader__bar').style.setProperty('--p', L.shown.toFixed(3));
-    $(this.root, '.loader__pct').textContent = `${pad(Math.round(L.shown * 100))}%`;
     if (L.reveal && L.shown >= 1) {
       L.done = true;
-      $(this.root, '.loader__status').textContent = 'Floor ready';
+      $(this.root, '.loader__status').textContent = 'Ready';
       setTimeout(() => {
         $(this.root, '.loader').classList.add('is-done');
         document.body.classList.add('is-ready');
         this.exp.playIntro();
-      }, 420);
+      }, 380);
     }
   }
 
@@ -210,21 +240,20 @@ export class UI {
 
     exp.on('hover', (desk, project) => {
       this.hovered = desk;
-      const inner = $(this.label, '.label__inner');
+      if (this.pointer) this.pointer.overDesk = !!desk;
       if (desk) {
-        inner.innerHTML = project
+        $(this.tag, '.tag__card').innerHTML = project
           ? /* html */ `
-            <div class="label__row mono"><span class="swatch" style="--sw:${project.palette.accent}"></span>Desk ${pad(desk.number)} · ${DEPARTMENTS[project.discipline].short}</div>
-            <div class="label__title">${project.title}</div>`
+            ${tile(project, 'sm')}
+            <span class="tag__text"><span class="tag__title">${project.title}</span><span class="tag__sub">${DEPARTMENTS[project.discipline].kind} · ${project.year}</span></span>`
           : /* html */ `
-            <div class="label__row mono"><span class="swatch" style="--sw:#ffb347"></span>Desk ${pad(desk.number)} · Vacant</div>
-            <div class="label__title">Unassigned</div>`;
-        this.label.classList.add('is-on');
+            ${tile(null, 'sm')}
+            <span class="tag__text"><span class="tag__title">Desk ${desk.number}</span><span class="tag__sub">Open for your project</span></span>`;
+        this.placeTag();
+        this.tag.classList.add('is-on');
       } else {
-        this.label.classList.remove('is-on');
+        this.tag.classList.remove('is-on');
       }
-      this.cursor.classList.toggle('is-view', !!desk);
-      $(this.cursor, '.cursor__ring span').textContent = desk ? (project ? 'View' : 'Sit') : '';
     });
 
     exp.on('focus', (desk, project) => {
@@ -234,16 +263,16 @@ export class UI {
       document.body.classList.remove('is-arrived');
       this.audio.setFocus(!!desk);
       if (desk) {
-        this.hint.classList.add('is-gone');
+        this.hintSpent = true;
+        const stepping = document.body.classList.contains('is-focus');
         document.body.classList.add('is-focus');
         // let the old copy fade before swapping it
         this.arriveTimer = window.setTimeout(() => {
-          this.renderPanel(desk, project);
-          document.body.classList.add('is-arrived');
-        }, document.body.classList.contains('is-focus-was') ? 450 : 750);
-        document.body.classList.add('is-focus-was');
+          this.renderSheet(desk, project);
+          document.body.classList.add('is-arrived', 'is-sheet');
+        }, stepping ? 380 : 700);
       } else {
-        document.body.classList.remove('is-focus', 'is-focus-was');
+        document.body.classList.remove('is-focus', 'is-sheet');
         if (this.caseOpen) this.closeCase(true);
       }
     });
@@ -259,6 +288,10 @@ export class UI {
         return;
       }
       switch (act) {
+        case 'home':
+          if (this.focused) exp.focus(null);
+          else exp.rig.home();
+          break;
         case 'back': exp.focus(null); break;
         case 'recentre': exp.rig.home(); break;
         case 'prev': exp.step(-1); break;
@@ -282,6 +315,11 @@ export class UI {
       }
     });
 
+    // a click on the dim area around the index closes it
+    this.dir.addEventListener('click', (e) => {
+      if (e.target === this.dir) this.toggleDirectory(false);
+    });
+
     window.addEventListener('keydown', (e) => {
       const overlay = this.caseOpen || this.dir.classList.contains('is-open');
       if (e.key === 'Escape') {
@@ -289,70 +327,85 @@ export class UI {
         else if (this.dir.classList.contains('is-open')) this.toggleDirectory(false);
         else if (this.focused) exp.focus(null);
         else exp.rig.home();
-      } else if (e.key === '0' && !this.focused && !overlay) exp.rig.home(); else if (e.key === 'ArrowRight' && this.focused && !this.caseOpen) exp.step(1);
+      } else if (e.key === '0' && !this.focused && !overlay) exp.rig.home();
+      else if (e.key === 'ArrowRight' && this.focused && !this.caseOpen) exp.step(1);
       else if (e.key === 'ArrowLeft' && this.focused && !this.caseOpen) exp.step(-1);
-      else if (e.key === 'Enter' && this.focused && !this.focusedProject) location.href = `mailto:${site.email}`;
+      else if (e.key === 'Enter' && this.focused && !this.focusedProject && !overlay) location.href = `mailto:${site.email}`;
       else if ((e.key === 'i' || e.key === 'I') && !this.caseOpen) this.toggleDirectory(!this.dir.classList.contains('is-open'));
     });
-
-    window.addEventListener('pointermove', (e) => {
-      this.mouse.x = e.clientX;
-      this.mouse.y = e.clientY;
-      this.cursor.classList.remove('is-hidden');
-      const overUI = (e.target as HTMLElement).closest('button, a');
-      this.cursor.classList.toggle('is-link', !!overUI);
-    });
-    document.addEventListener('pointerleave', () => this.cursor.classList.add('is-hidden'));
   }
 
   /* ------------------------------------------------------------------ */
 
-  private renderPanel(desk: Desk, p: Project | null) {
+  private renderSheet(desk: Desk, p: Project | null) {
+    const win = $(this.sheet, '.sheet__window');
+    const shown = document.body.classList.contains('is-sheet');
+    const from = win.getBoundingClientRect().height;
+    this.fillSheet(desk, p);
+    // between desks the window keeps its place and eases to its new height
+    if (!shown) return;
+    win.style.height = '';
+    const to = win.getBoundingClientRect().height;
+    if (Math.abs(to - from) < 1) return;
+    win.style.height = `${from}px`;
+    void win.offsetHeight;
+    win.style.height = `${to}px`;
+    clearTimeout(this.heightTimer);
+    this.heightTimer = window.setTimeout(() => (win.style.height = ''), 600);
+  }
+
+  private fillSheet(desk: Desk, p: Project | null) {
     const roster = this.exp.roster;
-    const crumbs = $(this.root, '.crumbs');
+    const content = $(this.sheet, '.sheet__content');
+    const dots = $(this.sheet, '.dots');
     if (p) {
       const i = roster.findIndex((r) => r.project === p);
       const dept = DEPARTMENTS[p.discipline];
-      crumbs.innerHTML = `Floor / <b>Desk ${pad(desk.number)}</b>`;
-      this.panel.style.setProperty('--sw', p.palette.accent);
-      this.panel.innerHTML = /* html */ `
-        <div class="panel__top mono" style="--i:0"><span class="idx">${pad(i + 1)} / ${pad(roster.length)}</span><span class="swatch" style="--sw:${p.palette.accent}"></span><span>Dept. of ${dept.name}</span></div>
-        <h2 class="panel__title" style="--i:1">${p.title}</h2>
-        <p class="panel__tagline" style="--i:2">${p.tagline}</p>
-        <p class="panel__summary" style="--i:3">${p.summary}</p>
-        <dl class="panel__meta" style="--i:4">
-          <div><dt class="mono">Client</dt><dd>${p.client}</dd></div>
-          <div><dt class="mono">Year</dt><dd>${p.year}</dd></div>
-          <div><dt class="mono">Role</dt><dd>${p.role}</dd></div>
-          <div><dt class="mono">Stack</dt><dd>${p.stack.join(', ')}</dd></div>
-        </dl>
-        <div class="panel__actions" style="--i:5">
-          <button class="btn btn--primary" data-act="case">Open case study ${expand}</button>
-          ${p.url ? `<a class="btn btn--ghost" href="${p.url}" target="_blank" rel="noopener">Live site ${arrowUpRight}</a>` : ''}
+      content.innerHTML = /* html */ `
+        <div class="sheet__bar" style="--i:0">
+          <button class="icon-btn icon-btn--fill" data-act="back" aria-label="Back to the floor">${chevronLeft}</button>
+          <span class="sheet__count">${i + 1} of ${roster.length}</span>
         </div>
-        <div class="pager" style="--i:6">
-          <button data-act="prev" aria-label="Previous desk">${arrowLeft}</button>
-          <div class="dots">${roster.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div>
-          <button data-act="next" aria-label="Next desk">${arrowRight}</button>
-          <span class="mono" style="margin-left:6px">← → to walk the floor</span>
+        <div class="sheet__head" style="--i:1">
+          ${tile(p, 'lg')}
+          <div>
+            <h2 class="sheet__title">${p.title}</h2>
+            <p class="sheet__kicker">${dept.kind} · ${p.year}</p>
+          </div>
+        </div>
+        <p class="sheet__tagline" style="--i:2">${p.tagline}</p>
+        <p class="sheet__summary" style="--i:3">${p.summary}</p>
+        <div class="sheet__actions" style="--i:4">
+          <button class="btn btn--prominent" data-act="case" data-pointer="lift">${expand}<span>Open case study</span></button>
+          ${p.url ? `<a class="btn btn--glass" href="${p.url}" target="_blank" rel="noopener"><span>Live site</span>${arrowUpRight}</a>` : ''}
+        </div>
+        <div class="sheet__info" style="--i:5">
+          ${info([['Client', p.client], ['Role', p.role], ['Stack', p.stack.join(', ')], ['Desk', String(desk.number)]])}
         </div>`;
+      dots.innerHTML = roster.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('');
+      this.sheet.classList.remove('is-vacant');
     } else {
-      crumbs.innerHTML = `Floor / <b>Desk ${pad(desk.number)}</b>`;
-      this.panel.innerHTML = /* html */ `
-        <div class="panel__top mono" style="--i:0"><span class="idx">Desk ${pad(desk.number)}</span><span class="swatch" style="--sw:#ffb347"></span><span>Unassigned</span></div>
-        <h2 class="panel__title" style="--i:1">Open desk.</h2>
-        <p class="panel__tagline" style="--i:2">Reserved for the next project.</p>
-        <p class="panel__summary" style="--i:3">Every desk on this floor is a piece of work. This one is still waiting — for a launch, a brand or a product that doesn’t exist yet.</p>
-        <dl class="panel__meta" style="--i:4">
-          <div><dt class="mono">Availability</dt><dd>Booking new work</dd></div>
-          <div><dt class="mono">Reply</dt><dd>Within 48 hours</dd></div>
-          <div><dt class="mono">Disciplines</dt><dd>Brand · Web · Product · Motion</dd></div>
-          <div><dt class="mono">Based</dt><dd>Remote, worldwide</dd></div>
-        </dl>
-        <div class="panel__actions" style="--i:5">
-          <a class="btn btn--primary" href="mailto:${site.email}">Start a project ${arrowUpRight}</a>
-          <button class="btn btn--ghost" data-act="back">Back to floor <kbd>Esc</kbd></button>
+      content.innerHTML = /* html */ `
+        <div class="sheet__bar" style="--i:0">
+          <button class="icon-btn icon-btn--fill" data-act="back" aria-label="Back to the floor">${chevronLeft}</button>
+          <span class="sheet__count">Desk ${desk.number}</span>
+        </div>
+        <div class="sheet__head" style="--i:1">
+          ${tile(null, 'lg')}
+          <div>
+            <h2 class="sheet__title">Open desk</h2>
+            <p class="sheet__kicker">Reserved for the next project</p>
+          </div>
+        </div>
+        <p class="sheet__tagline" style="--i:2">This one is waiting for yours.</p>
+        <p class="sheet__summary" style="--i:3">Every desk on this floor is a piece of work. This one is still empty — for a launch, a brand or a product that doesn’t exist yet.</p>
+        <div class="sheet__actions" style="--i:4">
+          <a class="btn btn--prominent" href="mailto:${site.email}" data-pointer="lift"><span>Start a project</span>${arrowUpRight}</a>
+        </div>
+        <div class="sheet__info" style="--i:5">
+          ${info([['Availability', 'Booking new work'], ['Reply', 'Within 48 hours'], ['Disciplines', 'Brand, web, product, motion'], ['Based', 'Remote, worldwide']])}
         </div>`;
+      this.sheet.classList.add('is-vacant');
     }
   }
 
@@ -368,17 +421,14 @@ export class UI {
     const body = $(this.caseEl, '.case__body');
     const dept = DEPARTMENTS[p.discipline];
     body.innerHTML = /* html */ `
-      <div class="panel__top mono"><span class="swatch" style="--sw:${p.palette.accent}"></span><span>Dept. of ${dept.name} · ${p.year}</span></div>
+      <div class="case__head">${tile(p, 'md')}<p class="case__kicker">${dept.kind} · ${p.year}</p></div>
       <h2 class="case__title">${p.title}</h2>
-      <p class="panel__tagline">${p.tagline}</p>
-      <p class="panel__summary">${p.summary}</p>
-      <div class="case__stats">${statsFor(p).map(([n, l]) => `<div><b>${n}</b><span class="mono" style="color:var(--paper-dim)">${l}</span></div>`).join('')}</div>
-      <dl class="panel__meta" style="border:0;padding:0">
-        <div><dt class="mono">Client</dt><dd>${p.client}</dd></div>
-        <div><dt class="mono">Role</dt><dd>${p.role}</dd></div>
-      </dl>
-      <div class="panel__actions">
-        <a class="btn btn--primary" href="${p.url ?? '#'}" ${p.url ? 'target="_blank" rel="noopener"' : ''}>Visit project ${arrowUpRight}</a>
+      <p class="case__tagline">${p.tagline}</p>
+      <p class="case__summary">${p.summary}</p>
+      <div class="case__stats">${statsFor(p).map(([n, l]) => `<div><b>${n}</b><span>${l}</span></div>`).join('')}</div>
+      ${info([['Client', p.client], ['Role', p.role]])}
+      <div class="case__actions">
+        <a class="btn btn--prominent" href="${p.url ?? '#'}" ${p.url ? 'target="_blank" rel="noopener"' : ''} data-pointer="lift"><span>Visit project</span>${arrowUpRight}</a>
       </div>`;
 
     const screen = $(this.caseEl, '.case__screen');
@@ -394,7 +444,7 @@ export class UI {
     screen.style.borderRadius = '4px';
     void screen.offsetWidth;
     requestAnimationFrame(() => {
-      screen.style.transition = 'transform 1.05s var(--ease), border-radius 1.05s var(--ease)';
+      screen.style.transition = 'transform 0.9s var(--spring-soft), border-radius 0.9s var(--ease-out)';
       screen.style.transform = 'none';
       screen.style.borderRadius = '';
       this.caseEl.classList.add('is-open');
@@ -424,7 +474,7 @@ export class UI {
           screen.innerHTML = '';
           screen.style.cssText = '';
         }, 260);
-      }, 980);
+      }, 860);
     } else {
       screen.innerHTML = '';
       screen.style.cssText = '';
@@ -440,25 +490,42 @@ export class UI {
 
   /* ------------------------------------------------------------------ */
 
+  private placeTag() {
+    if (!this.hovered) return;
+    const p = this.exp.project(this.hovered.labelAnchor);
+    this.tag.style.transform = `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0)`;
+  }
+
+  /** The dock is one capsule that changes its mind: a hint, then a way home. */
+  private setDock(state: DockState) {
+    if (state === this.dockState) return;
+    const first = this.dockState === null;
+    this.dockState = state;
+    this.dock.dataset.state = state;
+    const face = state === 'none' ? null : $(this.dock, state === 'hint' ? '.dock__hint' : '.dock__reset');
+    if (face) {
+      if (first) this.dock.style.transition = 'none';
+      this.dock.style.width = `${face.scrollWidth}px`;
+      if (first) {
+        void this.dock.offsetWidth;
+        this.dock.style.transition = '';
+      }
+    }
+    $(this.dock, '.dock__reset').tabIndex = state === 'reset' ? 0 : -1;
+  }
+
   private frame = () => {
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - this.last) / 1000);
+    this.last = now;
     this.tickLoader();
-    // label follows its desk
-    if (this.hovered) {
-      const p = this.exp.project(this.hovered.labelAnchor);
-      this.label.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`;
-    }
-    // cursor: dot is exact, ring trails
-    this.ring.x += (this.mouse.x - this.ring.x) * 0.2;
-    this.ring.y += (this.mouse.y - this.ring.y) * 0.2;
-    this.cursor.style.transform = `translate3d(${this.ring.x}px, ${this.ring.y}px, 0)`;
-    $(this.cursor, '.cursor__dot').style.transform = `translate(calc(-50% + ${this.mouse.x - this.ring.x}px), calc(-50% + ${this.mouse.y - this.ring.y}px))`;
-    this.cursor.classList.toggle('is-drag', document.body.classList.contains('is-dragging'));
-    // once the visitor has wandered off, the hint makes way for a way home
+    this.placeTag();
+
     const away = this.exp.rig.mode === 'overview' && !this.exp.rig.isHome();
-    if (away !== document.body.classList.contains('is-away')) {
-      document.body.classList.toggle('is-away', away);
-      this.recentre.tabIndex = away ? 0 : -1;
-    }
+    document.body.classList.toggle('is-away', away);
+    this.setDock(this.focused ? 'none' : away ? 'reset' : this.hintSpent ? 'none' : 'hint');
+
+    this.pointer?.update(dt);
     requestAnimationFrame(this.frame);
   };
 }

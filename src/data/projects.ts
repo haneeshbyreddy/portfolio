@@ -24,12 +24,13 @@ export interface Project {
   url?: string;
 }
 
-export const DEPARTMENTS: Record<Discipline, { name: string; short: string }> = {
-  landing: { name: 'Landing Pages', short: 'Web' },
-  saas: { name: 'SaaS Product', short: 'Product' },
-  film: { name: 'Brand Film', short: 'Motion' },
-  brand: { name: 'Brand Identity', short: 'Identity' },
-  app: { name: 'Mobile Apps', short: 'App' },
+/** `kind` names one piece of work: "Orbit — a landing page". */
+export const DEPARTMENTS: Record<Discipline, { name: string; short: string; kind: string }> = {
+  landing: { name: 'Landing Pages', short: 'Web', kind: 'Landing page' },
+  saas: { name: 'SaaS Product', short: 'Product', kind: 'SaaS product' },
+  film: { name: 'Brand Film', short: 'Motion', kind: 'Brand film' },
+  brand: { name: 'Brand Identity', short: 'Identity', kind: 'Brand identity' },
+  app: { name: 'Mobile Apps', short: 'App', kind: 'Mobile app' },
 };
 
 export const projects: Project[] = [

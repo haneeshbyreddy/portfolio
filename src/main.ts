@@ -1,3 +1,6 @@
+// the interface is set in SF Pro where the system has it, Inter (with optical sizes) elsewhere
+import '@fontsource-variable/inter/opsz.css';
+// the monitor programs draw their own type
 import '@fontsource-variable/inter-tight';
 import '@fontsource-variable/geist-mono';
 import './ui/styles.css';
@@ -9,7 +12,7 @@ async function boot() {
 
   const gl = document.createElement('canvas').getContext('webgl2');
   if (!gl) {
-    host.innerHTML = `<div class="fallback"><div><h1 style="font-weight:500;letter-spacing:-.05em;font-size:64px;margin:0">Fieldwork</h1><p class="mono">This experience needs WebGL 2.</p></div></div>`;
+    host.innerHTML = `<div class="fallback"><div><h1>Fieldwork</h1><p>This experience needs WebGL 2.</p></div></div>`;
     return;
   }
 

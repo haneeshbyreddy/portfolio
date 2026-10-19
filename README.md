@@ -55,7 +55,7 @@ CRT shader, bloom and the "Open case study" pop-out all keep working.
 
 ## Personalise
 
-- `src/config/site.ts` — name, wordmark split, email, links, credits, about copy.
+- `src/config/site.ts` — name, title, headline, email, links, about copy.
 - `src/world/palette.ts` — every colour in the world.
 - `src/core/CameraRig.ts` — the three shots (intro crane, establishing, over-the-shoulder), and how the overview frames and limits itself (`framingFor`, `ROAM`, `AZ_MAX`, `TILT`).
 
@@ -80,7 +80,7 @@ src/
   world/       sky, terrain, grass (wind + cursor), trees, pollen + birds
   office/      floor plan, instanced furniture, workers (IK + behaviours)
   screens/     CRT material + the five preview programs + vacant terminal
-  ui/          one-sheet HUD, panel, case study, index, cursor, procedural sound
+  ui/          glass HUD, desk sheet, case study, index, adaptive pointer, procedural sound
   data/        projects
   config/      site copy
 ```
