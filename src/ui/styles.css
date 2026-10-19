@@ -707,17 +707,29 @@ body:not(.is-ready) .dock {
   gap: 10px;
   padding: 7px 16px 7px 7px;
   border-radius: 16px;
+  overflow: hidden;
   white-space: nowrap;
   opacity: 0;
-  transform: translateY(8px) scale(0.86);
+  transform: translateY(6px) scale(0.94);
   transform-origin: 50% 100%;
-  transition: opacity 0.18s var(--ease-out), transform 0.3s var(--ease-out);
+  transition: opacity 0.2s var(--ease-out), transform 0.3s var(--ease-out), width 0.4s var(--spring);
 }
 
 .tag.is-on .tag__card {
   opacity: 1;
   transform: none;
-  transition: opacity 0.22s var(--ease-out), transform 0.6s var(--spring-bouncy);
+  transition: opacity 0.22s var(--ease-out), transform 0.5s var(--spring), width 0.4s var(--spring);
+}
+
+/* moving to the next desk, the words change under a quick fade */
+.tag__card > * {
+  animation: tag-swap 0.26s var(--ease-out) both;
+}
+
+@keyframes tag-swap {
+  from {
+    opacity: 0;
+  }
 }
 
 .tag__card .tile {

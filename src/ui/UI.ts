@@ -3,7 +3,7 @@ import type { Desk } from '../office/Office';
 import { DEPARTMENTS, projects, type Project } from '../data/projects';
 import { site } from '../config/site';
 import { Ambience } from './Ambience';
-import { Pointer } from './Pointer';
+import { Pointer, Spring } from './Pointer';
 import {
   arrowUpRight, chevronLeft, chevronRight, disciplineGlyph, emblem, expand, mark, move, reset, speaker, xmark,
 } from './icons';
@@ -40,6 +40,11 @@ function statsFor(p: Project): [string, string][] {
 
 type DockState = 'hint' | 'reset' | 'none';
 
+/** The lawn between two desks is crossed in less than this; the tag waits it out. */
+const HOVER_GRACE = 240;
+/** How long the tag takes to glide from one desk to the next. */
+const GLIDE = 0.38;
+
 export class UI {
   private root: HTMLElement;
   private tag!: HTMLElement;
@@ -48,7 +53,13 @@ export class UI {
   private dir!: HTMLElement;
   private dock!: HTMLElement;
   private pointer: Pointer | null = null;
-  private hovered: Desk | null = null;
+  /** The desk the tag is pinned to (it outlives the hover by HOVER_GRACE). */
+  private tagDesk: Desk | null = null;
+  private tagHide = 0;
+  private tagWidth = 0;
+  private tagX = new Spring(0);
+  private tagY = new Spring(0);
+  private tagGlide = Infinity;
   private focused: Desk | null = null;
   private focusedProject: Project | null = null;
   private audio = new Ambience();
@@ -239,22 +250,13 @@ export class UI {
     const exp = this.exp;
 
     exp.on('hover', (desk, project) => {
-      this.hovered = desk;
-      if (this.pointer) this.pointer.overDesk = !!desk;
-      if (desk) {
-        $(this.tag, '.tag__card').innerHTML = project
-          ? /* html */ `
-            ${tile(project, 'sm')}
-            <span class="tag__text"><span class="tag__title">${project.title}</span><span class="tag__sub">${DEPARTMENTS[project.discipline].kind} · ${project.year}</span></span>`
-          : /* html */ `
-            ${tile(null, 'sm')}
-            <span class="tag__text"><span class="tag__title">Desk ${desk.number}</span><span class="tag__sub">Open for your project</span></span>`;
-        this.placeTag();
-        this.tag.classList.add('is-on');
-      } else {
-        this.tag.classList.remove('is-on');
-      }
+      clearTimeout(this.tagHide);
+      if (desk) this.showTag(desk, project);
+      // crossing the lawn between two desks shouldn't drop the tag or the lens
+      else this.tagHide = window.setTimeout(() => this.hideTag(), HOVER_GRACE);
     });
+
+    exp.on('frame', (dt) => this.placeTag(dt));
 
     exp.on('focus', (desk, project) => {
       this.focused = desk;
@@ -264,6 +266,8 @@ export class UI {
       this.audio.setFocus(!!desk);
       if (desk) {
         this.hintSpent = true;
+        clearTimeout(this.tagHide);
+        this.hideTag();
         const stepping = document.body.classList.contains('is-focus');
         document.body.classList.add('is-focus');
         // let the old copy fade before swapping it
@@ -490,10 +494,67 @@ export class UI {
 
   /* ------------------------------------------------------------------ */
 
-  private placeTag() {
-    if (!this.hovered) return;
-    const p = this.exp.project(this.hovered.labelAnchor);
-    this.tag.style.transform = `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0)`;
+  private showTag(desk: Desk, project: Project | null) {
+    if (this.pointer) this.pointer.overDesk = true;
+    if (desk === this.tagDesk) return;
+    const card = $(this.tag, '.tag__card');
+    const moving = !!this.tagDesk;
+    this.tagDesk = desk;
+    card.innerHTML = project
+      ? /* html */ `
+        ${tile(project, 'sm')}
+        <span class="tag__text"><span class="tag__title">${project.title}</span><span class="tag__sub">${DEPARTMENTS[project.discipline].kind} · ${project.year}</span></span>`
+      : /* html */ `
+        ${tile(null, 'sm')}
+        <span class="tag__text"><span class="tag__title">Desk ${desk.number}</span><span class="tag__sub">Open for your project</span></span>`;
+
+    // measure the new content; when already showing, ease the width across
+    card.style.width = '';
+    const width = card.offsetWidth;
+    if (moving && this.tagWidth && Math.abs(width - this.tagWidth) > 0.5) {
+      card.style.width = `${this.tagWidth}px`;
+      void card.offsetWidth;
+      card.style.width = `${width}px`;
+    }
+    this.tagWidth = width;
+
+    if (moving) {
+      this.tagGlide = 0;
+    } else {
+      const p = this.exp.project(desk.labelAnchor);
+      this.tagX.set(p.x);
+      this.tagY.set(p.y);
+      this.tagGlide = Infinity;
+      this.placeTag(0);
+    }
+    this.tag.classList.add('is-on');
+  }
+
+  private hideTag() {
+    if (this.pointer) this.pointer.overDesk = false;
+    this.tagDesk = null;
+    this.tag.classList.remove('is-on');
+  }
+
+  /** Pinned to its desk after the camera moves, so it never trails a frame behind. */
+  private placeTag(dt: number) {
+    const d = this.tagDesk;
+    if (!d) return;
+    const p = this.exp.project(d.labelAnchor);
+    if (this.tagGlide < GLIDE) {
+      // a critically damped glide to the next desk that stiffens until it holds
+      this.tagGlide += dt;
+      const k = 220 + (Math.min(1, this.tagGlide / GLIDE) ** 2) * 9000;
+      const steps = Math.max(1, Math.ceil(dt / (1 / 240)));
+      for (let i = 0; i < steps; i++) {
+        this.tagX.step(p.x, dt / steps, k, 1);
+        this.tagY.step(p.y, dt / steps, k, 1);
+      }
+    } else {
+      this.tagX.set(p.x);
+      this.tagY.set(p.y);
+    }
+    this.tag.style.transform = `translate3d(${this.tagX.x.toFixed(2)}px, ${this.tagY.x.toFixed(2)}px, 0)`;
   }
 
   /** The dock is one capsule that changes its mind: a hint, then a way home. */
@@ -519,7 +580,6 @@ export class UI {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.tickLoader();
-    this.placeTag();
 
     const away = this.exp.rig.mode === 'overview' && !this.exp.rig.isHome();
     document.body.classList.toggle('is-away', away);

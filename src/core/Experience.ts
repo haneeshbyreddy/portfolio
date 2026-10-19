@@ -46,6 +46,8 @@ export interface ExperienceEvents {
   focus: (desk: Desk | null, project: Project | null) => void;
   arrive: (mode: string) => void;
   progress: (p: number) => void;
+  /** After the camera has moved for a frame — anything pinned to the scene follows here. */
+  frame: (dt: number) => void;
 }
 
 type Listener<K extends keyof ExperienceEvents> = ExperienceEvents[K];
@@ -419,6 +421,7 @@ export class Experience {
       t.focusArea = damp(t.focusArea, half + t.feather, 4, dt);
     }
     if (draw) this.composer.render(dt);
+    this.emit('frame', dt);
   }
 
   /** Vertical extent of the floor on screen (NDC y). */
