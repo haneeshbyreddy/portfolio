@@ -14,9 +14,9 @@ Where the mock stands after the first build (commit `7419661`, 2026-10-19), and 
 - **Trees.** Up close, the forest edge still reads as rounded "lollipop" canopies. Options: more varied canopy shapes, billboard impostors, or a denser, darker edge.
 - **Figures up close.** The short hairstyle looks like a bowl cut from behind, and the hands are blocky mittens. The heads are faceless on purpose.
 - **Lawn.** At the over-shoulder distance, the mown blades look like sparse tufts. Raise the density around the desks, or make the blades finer.
-- **Establishing shot.** The sky band is narrow and the far mountains are faint. Tune the camera in `CameraRig.ts` (`elevation`, `radius`, `center`), the fog density in `World.ts`, or the mountain height in `Terrain.ts`.
+- **Establishing shot.** The sky band is narrow and the far mountains are faint. Tune the overview framing in `framingFor()` in `CameraRig.ts` (`far`, `elFar`, `yFar`), the fog density in `World.ts`, or the mountain height in `Terrain.ts`.
 - **Vacant desk power-down.** The single hi-res canvas is shared, so when you leave an empty desk its screen briefly shows the next desk's content during the 0.35s power-off.
-- **Mobile.** In portrait, the outer desk columns are cropped in the overview, and the focus sheet is tall.
+- **Mobile.** In portrait, the floor is a narrow band across the middle of a tall frame, the outer columns are half cropped (drag or pinch to reach them), and the focus sheet is tall.
 
 ## Not verified yet
 

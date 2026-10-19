@@ -30,6 +30,7 @@ import { applyShaderPatches } from './shaderPatches';
 import { detectQuality, type Quality } from './quality';
 import { ShiftCamera } from './ShiftCamera';
 import { CameraRig } from './CameraRig';
+import { Controls } from './Controls';
 import { damp } from './math';
 import { createWorld } from '../world/World';
 import { shared } from '../world/shared';
@@ -55,6 +56,7 @@ export class Experience {
   readonly scene = new Scene();
   readonly camera: ShiftCamera;
   readonly rig: CameraRig;
+  readonly controls: Controls;
   readonly office: Office;
   readonly workers: Workers;
   readonly screens: Screens;
@@ -84,7 +86,6 @@ export class Experience {
   private last = performance.now();
   private clock = 0;
   private pointerInside = false;
-  private drag = { active: false, x: 0, y: 0, moved: 0, t: 0, id: -1 };
   private running = false;
   readonly focusedDesk: { current: Desk | null } = { current: null };
 
@@ -124,7 +125,22 @@ export class Experience {
     this.composer = this.createComposer();
     this.rig.onArrive = () => this.emit('arrive', this.rig.mode);
 
-    this.bindInput();
+    this.controls = new Controls(this.renderer.domElement, this.rig, {
+      tap: (x, y) => this.tap(x, y),
+      doubleTap: (x, y) => this.doubleTap(x, y),
+      move: (x, y, dragging) => this.pointerMoved(x, y, dragging),
+      leave: () => {
+        this.pointerInside = false;
+        this.cursorTarget = 0;
+        this.setHover(null);
+      },
+      back: () => this.focus(null),
+      dive: (x, y) => {
+        const d = this.pick(x, y);
+        if (d) this.focus(d);
+        return !!d;
+      },
+    });
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -303,57 +319,30 @@ export class Experience {
     return best;
   }
 
-  private bindInput() {
-    const el = this.renderer.domElement;
-    el.addEventListener('pointerdown', (e) => {
-      this.drag = { active: true, x: e.clientX, y: e.clientY, moved: 0, t: performance.now(), id: e.pointerId };
-      el.setPointerCapture(e.pointerId);
-    });
-    el.addEventListener('pointermove', (e) => {
-      this.pointerInside = true;
-      const w = window.innerWidth, h = window.innerHeight;
-      this.rig.pointer.set((e.clientX / w) * 2 - 1, -((e.clientY / h) * 2 - 1));
-      if (this.drag.active && this.drag.id === e.pointerId) {
-        const dx = e.clientX - this.drag.x;
-        const dy = e.clientY - this.drag.y;
-        this.drag.moved += Math.abs(dx) + Math.abs(dy);
-        this.drag.x = e.clientX;
-        this.drag.y = e.clientY;
-        if (this.drag.moved > 6) this.rig.orbit(dx, dy);
-        document.body.classList.toggle('is-dragging', this.drag.moved > 6 && this.rig.mode === 'overview');
-      }
-      if (this.rig.mode === 'overview' && !this.rig.isTransitioning()) {
-        this.setHover(this.drag.moved > 6 ? null : this.pick(e.clientX, e.clientY));
-        this.cursorTarget = 1;
-      } else {
-        this.pick(e.clientX, e.clientY);
-        this.cursorTarget = 0.4;
-      }
-    });
-    el.addEventListener('pointerup', (e) => {
-      if (!this.drag.active) return;
-      const click = this.drag.moved < 8 && performance.now() - this.drag.t < 600;
-      this.drag.active = false;
-      document.body.classList.remove('is-dragging');
-      el.releasePointerCapture(e.pointerId);
-      if (!click) return;
-      if (this.rig.mode === 'overview') {
-        const d = this.pick(e.clientX, e.clientY);
-        if (d) this.focus(d);
-      } else if (this.rig.mode === 'focus') {
-        const d = this.pick(e.clientX, e.clientY);
-        if (d && d !== this.focusedDesk.current) this.focus(d);
-      }
-    });
-    el.addEventListener('pointerleave', () => {
-      this.pointerInside = false;
-      this.cursorTarget = 0;
+  private pointerMoved(x: number, y: number, dragging: boolean) {
+    this.pointerInside = true;
+    // parallax holds still under a drag, or it would fight the hand
+    if (!dragging) this.rig.pointer.set((x / window.innerWidth) * 2 - 1, -((y / window.innerHeight) * 2 - 1));
+    const desk = this.pick(x, y);
+    if (this.rig.mode === 'overview' && !this.rig.isTransitioning() && !dragging) {
+      this.setHover(desk);
+      this.cursorTarget = 1;
+    } else {
       this.setHover(null);
-    });
-    el.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      this.rig.zoom(e.deltaY);
-    }, { passive: false });
+      this.cursorTarget = 0.4;
+    }
+  }
+
+  private tap(x: number, y: number) {
+    const d = this.pick(x, y);
+    if (d && d !== this.focusedDesk.current && this.rig.mode !== 'intro') this.focus(d);
+  }
+
+  /** Double-click the open floor to step in toward that spot. */
+  private doubleTap(x: number, y: number) {
+    if (this.rig.mode !== 'overview' || this.pick(x, y)) return;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    this.rig.zoomAt(0.6, new Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1));
   }
 
   resize() {
@@ -402,6 +391,7 @@ export class Experience {
     this.clock += dt;
     const time = this.clock;
     this.world.update(time);
+    this.controls.update(dt);
     this.rig.update(dt);
     this.workers.update(dt, time, this.camera.position);
     const fd = this.focusedDesk.current;
@@ -431,13 +421,17 @@ export class Experience {
     if (draw) this.composer.render(dt);
   }
 
-  /** Vertical extent of the floor on screen (NDC y), or null while part of it is behind the lens. */
+  /** Vertical extent of the floor on screen (NDC y). */
   private floorBand() {
     this.camera.updateMatrixWorld();
     let lo = Infinity, hi = -Infinity;
     for (const p of this.floorHull) {
       const v = this._v.copy(p).applyMatrix4(this.camera.matrixWorldInverse);
-      if (v.z > -this.camera.near) return null;
+      // a corner behind the lens means the floor runs off the bottom of the frame
+      if (v.z > -this.camera.near) {
+        lo = -1.2;
+        continue;
+      }
       v.applyMatrix4(this.camera.projectionMatrix);
       lo = Math.min(lo, v.y);
       hi = Math.max(hi, v.y);

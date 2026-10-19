@@ -3,7 +3,7 @@ import type { Desk } from '../office/Office';
 import { DEPARTMENTS, projects, type Project } from '../data/projects';
 import { site } from '../config/site';
 import { Ambience } from './Ambience';
-import { arrowLeft, arrowRight, arrowUpRight, close, emblem, expand } from './icons';
+import { arrowLeft, arrowRight, arrowUpRight, close, emblem, expand, recentre } from './icons';
 
 const $ = <T extends HTMLElement = HTMLElement>(root: ParentNode, sel: string) => root.querySelector(sel) as T;
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -32,6 +32,7 @@ export class UI {
   private caseEl!: HTMLElement;
   private dir!: HTMLElement;
   private hint!: HTMLElement;
+  private recentre!: HTMLElement;
   private hovered: Desk | null = null;
   private focused: Desk | null = null;
   private focusedProject: Project | null = null;
@@ -89,7 +90,8 @@ export class UI {
         ${site.credits.map(([a, b], i) => `<div class="justify reveal" style="--d:${340 + i * 50}"><span>${a}</span><span>${b}</span></div>`).join('')}
       </footer>
 
-      <div class="hint mono reveal" style="--d:900"><span class="hint__dot"></span>${touch ? 'Drag to look around · Tap a desk' : 'Drag to look around · Click a desk'}</div>
+      <div class="hint mono reveal" style="--d:900"><span class="hint__dot"></span>${touch ? 'Drag to explore · Pinch to zoom · Tap a desk' : 'Drag to explore · Scroll to zoom · Click a desk'}</div>
+      <button class="chip mono recentre" data-act="recentre" aria-label="Reset the view" tabindex="-1">${recentre}<span>Reset view</span>${touch ? '' : '<kbd>Esc</kbd>'}</button>
 
       <div class="label" aria-hidden="true"><div class="label__stem"></div><div class="label__inner"></div></div>
 
@@ -155,6 +157,7 @@ export class UI {
     this.caseEl = $(this.root, '.case');
     this.dir = $(this.root, '.directory');
     this.hint = $(this.root, '.hint');
+    this.recentre = $(this.root, '.recentre');
     if (this.fine) document.body.classList.add('has-cursor');
   }
 
@@ -257,6 +260,7 @@ export class UI {
       }
       switch (act) {
         case 'back': exp.focus(null); break;
+        case 'recentre': exp.rig.home(); break;
         case 'prev': exp.step(-1); break;
         case 'next': exp.step(1); break;
         case 'case': this.openCase(); break;
@@ -279,11 +283,13 @@ export class UI {
     });
 
     window.addEventListener('keydown', (e) => {
+      const overlay = this.caseOpen || this.dir.classList.contains('is-open');
       if (e.key === 'Escape') {
         if (this.caseOpen) this.closeCase();
         else if (this.dir.classList.contains('is-open')) this.toggleDirectory(false);
         else if (this.focused) exp.focus(null);
-      } else if (e.key === 'ArrowRight' && this.focused && !this.caseOpen) exp.step(1);
+        else exp.rig.home();
+      } else if (e.key === '0' && !this.focused && !overlay) exp.rig.home(); else if (e.key === 'ArrowRight' && this.focused && !this.caseOpen) exp.step(1);
       else if (e.key === 'ArrowLeft' && this.focused && !this.caseOpen) exp.step(-1);
       else if (e.key === 'Enter' && this.focused && !this.focusedProject) location.href = `mailto:${site.email}`;
       else if ((e.key === 'i' || e.key === 'I') && !this.caseOpen) this.toggleDirectory(!this.dir.classList.contains('is-open'));
@@ -357,6 +363,7 @@ export class UI {
     const p = this.focusedProject;
     if (!desk || !p || this.caseOpen) return;
     this.caseOpen = true;
+    this.exp.controls.enabled = false;
     this.caseGen++;
     const body = $(this.caseEl, '.case__body');
     const dept = DEPARTMENTS[p.discipline];
@@ -397,6 +404,7 @@ export class UI {
   private closeCase(immediate = false) {
     if (!this.caseOpen) return;
     this.caseOpen = false;
+    this.exp.controls.enabled = !this.dir.classList.contains('is-open');
     const gen = ++this.caseGen;
     const screen = $(this.caseEl, '.case__screen');
     this.caseEl.classList.remove('is-open');
@@ -426,6 +434,7 @@ export class UI {
   private toggleDirectory(open: boolean, about = false) {
     this.dir.classList.toggle('is-open', open);
     this.dir.setAttribute('aria-hidden', String(!open));
+    this.exp.controls.enabled = !open && !this.caseOpen;
     if (open && about) setTimeout(() => $(this.dir, '#about').scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
   }
 
@@ -444,6 +453,12 @@ export class UI {
     this.cursor.style.transform = `translate3d(${this.ring.x}px, ${this.ring.y}px, 0)`;
     $(this.cursor, '.cursor__dot').style.transform = `translate(calc(-50% + ${this.mouse.x - this.ring.x}px), calc(-50% + ${this.mouse.y - this.ring.y}px))`;
     this.cursor.classList.toggle('is-drag', document.body.classList.contains('is-dragging'));
+    // once the visitor has wandered off, the hint makes way for a way home
+    const away = this.exp.rig.mode === 'overview' && !this.exp.rig.isHome();
+    if (away !== document.body.classList.contains('is-away')) {
+      document.body.classList.toggle('is-away', away);
+      this.recentre.tabIndex = away ? 0 : -1;
+    }
     requestAnimationFrame(this.frame);
   };
 }

@@ -57,23 +57,26 @@ CRT shader, bloom and the "Open case study" pop-out all keep working.
 
 - `src/config/site.ts` — name, wordmark split, email, links, credits, about copy.
 - `src/world/palette.ts` — every colour in the world.
-- `src/core/CameraRig.ts` — the three shots (intro crane, establishing, over-the-shoulder).
+- `src/core/CameraRig.ts` — the three shots (intro crane, establishing, over-the-shoulder), and how the overview frames and limits itself (`framingFor`, `ROAM`, `AZ_MAX`, `TILT`).
 
 ## Controls
 
-| Input                 | Action                       |
-| --------------------- | ---------------------------- |
-| Drag / scroll         | Look around the floor / zoom |
-| Click a desk          | Lean over that shoulder      |
-| `←` `→`               | Walk to the previous / next desk |
-| `Esc`                 | Back to the floor            |
-| `I`                   | Index of all projects        |
+| Input                                   | On the floor                                       | At a desk                        |
+| --------------------------------------- | -------------------------------------------------- | -------------------------------- |
+| Drag                                    | Slide the floor (zoom in to roam further)          | Look around                      |
+| Scroll / pinch                          | Zoom toward the cursor; keep going on a desk to sit in | Zoom out to go back to the floor |
+| Right-drag / two-finger twist / `Q` `E` | Turn around the floor                              |                                  |
+| Click / tap a desk                      | Lean over that shoulder                            | Hop to that desk                 |
+| Double-click the lawn                   | Step in toward that spot                           |                                  |
+| Arrows / `WASD`, `+` `−`                | Slide, zoom                                        | `←` `→` walk to the previous / next desk |
+| `Esc` / `0`                             | Reset the view                                     | Back to the floor                |
+| `I`                                     | Index of all projects                              | Index of all projects            |
 
 ## Map
 
 ```
 src/
-  core/        renderer, camera rig (shift lens), quality tiers, math, glsl
+  core/        renderer, camera rig (shift lens) + controls, quality tiers, math, glsl
   world/       sky, terrain, grass (wind + cursor), trees, pollen + birds
   office/      floor plan, instanced furniture, workers (IK + behaviours)
   screens/     CRT material + the five preview programs + vacant terminal

@@ -326,8 +326,45 @@ a {
   transform: translateX(-50%);
 }
 
-.hint.is-gone {
+.hint.is-gone,
+.is-away .hint {
   opacity: 0 !important;
+}
+
+/* Takes the hint's place once the visitor has wandered off the establishing shot. */
+.recentre {
+  position: absolute;
+  left: 50%;
+  bottom: var(--gutter);
+  height: 34px;
+  padding: 0 8px 0 12px;
+  gap: 9px;
+  color: var(--paper);
+  opacity: 0;
+  transform: translate(-50%, 10px);
+  pointer-events: none;
+  transition: opacity 0.5s var(--ease), transform 0.7s var(--ease), background 0.3s var(--ease), border-color 0.3s var(--ease);
+}
+
+.recentre svg {
+  width: 15px;
+  height: 15px;
+}
+
+.recentre:not(:has(kbd)) {
+  padding-right: 14px;
+}
+
+.recentre kbd {
+  padding: 2px 5px;
+  font-size: 9.5px;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.is-ready.is-away:not(.is-focus) .recentre {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
 }
 
 .hint__dot {
@@ -1115,7 +1152,8 @@ kbd {
     display: none;
   }
 
-  .hint {
+  .hint,
+  .recentre {
     bottom: calc(var(--gutter) + clamp(64px, 24vw, 200px) * 0.74 + 18px);
   }
 
