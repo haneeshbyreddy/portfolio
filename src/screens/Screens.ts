@@ -52,6 +52,8 @@ interface Screen {
   boot: number;
   hover: number;
   hoverTarget: number;
+  /** A vacant terminal still under its sheet: don't boot yet. */
+  held: boolean;
 }
 
 /**
@@ -81,6 +83,7 @@ export class Screens {
         boot: 1,
         hover: 0,
         hoverTarget: 0,
+        held: false,
       };
       const u = desk.screenMaterial.uniforms;
       if (s.low) {
@@ -102,7 +105,8 @@ export class Screens {
     for (const s of this.screens) s.hoverTarget = s.desk === desk ? 1 : 0;
   }
 
-  focus(desk: Desk | null) {
+  /** Show a desk's screen hi-res. A held vacant terminal waits for wake(). */
+  focus(desk: Desk | null, hold = false) {
     const prev = this.focused;
     if (prev && prev.desk === desk) return;
     if (prev) {
@@ -113,6 +117,7 @@ export class Screens {
         u.uRes.value.set(prev.low.w, prev.low.h);
       } else {
         prev.onTarget = 0; // vacant terminal powers down
+        prev.held = false;
       }
     }
     this.focused = null;
@@ -129,8 +134,17 @@ export class Screens {
       s.boot = 0;
       s.onTarget = 1;
       s.on = 1;
+      s.held = hold;
     }
     this.draw(s, this.hi);
+  }
+
+  /** The sheet is off: let the vacant terminal boot. */
+  wake(desk: Desk) {
+    const s = this.screens.find((x) => x.desk === desk);
+    if (!s || !s.held) return;
+    s.held = false;
+    s.t = 0;
   }
 
   private draw(s: Screen, surf: Surface) {
@@ -151,7 +165,9 @@ export class Screens {
 
       if (!s.project) {
         // vacant: boot sequence on focus, power-down on leave
-        if (s.onTarget > 0) {
+        if (s.held) {
+          s.t = 0;
+        } else if (s.onTarget > 0) {
           s.boot = Math.min(1, s.boot + dt / 1.1);
         } else {
           s.boot = Math.max(0, s.boot - dt / 0.35);

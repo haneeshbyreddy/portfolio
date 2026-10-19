@@ -30,8 +30,6 @@ export const palette = {
   // office (Severance one-sheet)
   deskWhite: '#ecebe6',
   deskShade: '#dedcd5',
-  partition: '#1d2c25',
-  aluminium: '#b9bcb7',
   crt: '#ddd5c4',
   crtDark: '#2a2a27',
   keyCap: '#e9e3d5',
@@ -39,6 +37,7 @@ export const palette = {
   chairFabric: '#2b2f31',
   chairBase: '#18191b',
   chrome: '#a2a6a8',
+  sheet: '#e9e3d6',
 } as const;
 
 export const col = (hex: string) => new Color(hex);

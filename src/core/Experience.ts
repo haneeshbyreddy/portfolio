@@ -35,7 +35,7 @@ import { createWorld } from '../world/World';
 import { shared } from '../world/shared';
 import { Office, type Desk } from '../office/Office';
 import { Workers } from '../office/Workers';
-import { FILL_ORDER } from '../office/layout';
+import { FILL_ORDER, floorBounds } from '../office/layout';
 import { SCREEN } from '../office/parts';
 import { Screens } from '../screens/Screens';
 import { projects, type Project } from '../data/projects';
@@ -65,6 +65,14 @@ export class Experience {
 
   private composer: EffectComposer;
   private tilt: TiltShiftEffect | null = null;
+  /** Corners of the furnished floor, ground to just above the heads — what the lens keeps sharp. */
+  private floorHull = (() => {
+    const f = floorBounds();
+    const pts: Vector3[] = [];
+    for (const x of [f.x0, f.x1]) for (const z of [f.z0, f.z1]) for (const y of [0, 1.45]) pts.push(new Vector3(x, y, z));
+    return pts;
+  })();
+  private _v = new Vector3();
   private world: ReturnType<typeof createWorld>;
   private raycaster = new Raycaster();
   private ndc = new Vector2();
@@ -102,23 +110,16 @@ export class Experience {
     this.world = createWorld(this.scene, this.renderer, q);
 
     // assign projects to desks in hiring order
-    const occupied = new Set<number>();
-    projects.forEach((p, i) => {
-      const slot = FILL_ORDER[i];
-      if (!slot) return;
-      const idx = slot[0] * 4 + slot[1];
-      occupied.add(idx);
-    });
-    this.office = new Office(this.scene, occupied, q.shadows);
-    projects.forEach((p, i) => {
-      const slot = FILL_ORDER[i];
-      if (!slot) return;
-      const desk = this.office.desks[slot[0] * 4 + slot[1]];
+    const hired = projects.slice(0, FILL_ORDER.length);
+    this.office = new Office(this.scene, new Set(hired.map((_, i) => FILL_ORDER[i])), q.shadows);
+    hired.forEach((p, i) => {
+      const desk = this.office.desks[FILL_ORDER[i]];
       this.assignment.set(desk.index, p);
       this.roster.push({ project: p, desk });
     });
     this.workers = new Workers(this.office.root, this.roster.map(({ desk, project }) => ({ desk, seed: project.id })), q.shadows);
     this.screens = new Screens(this.office.desks, this.assignment, q.tier === 'low' ? [384, 288] : [512, 384]);
+    this.office.sheets.onClear = (desk) => this.screens.wake(desk);
 
     this.composer = this.createComposer();
     this.rig.onArrive = () => this.emit('arrive', this.rig.mode);
@@ -194,12 +195,15 @@ export class Experience {
     const timeout = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     this.emit('progress', 0.15);
     await frame();
+    const sheets = Promise.race([this.office.sheets.ready, timeout(6000)]);
     try {
       await Promise.race([this.renderer.compileAsync(this.scene, this.camera), timeout(2500)]);
     } catch {
       this.renderer.compile(this.scene, this.camera);
     }
     this.emit('progress', 0.6);
+    // the dust sheets bake in a worker meanwhile; they compile in the frames below
+    await sheets;
     // let the render loop draw a few frames (uploads, shadow maps) behind the loader
     const steps = 4;
     for (let i = 0; i < steps; i++) {
@@ -224,10 +228,13 @@ export class Experience {
 
   focus(desk: Desk | null) {
     if (desk && this.focusedDesk.current === desk) return;
+    const prev = this.focusedDesk.current;
+    if (prev?.covered) this.office.sheets.cover(prev);
     this.focusedDesk.current = desk;
     if (desk) {
       this.rig.go('focus', desk);
-      this.screens.focus(desk);
+      // a sheeted desk keeps its terminal dark until the sheet comes off on arrival
+      this.screens.focus(desk, desk.covered);
       this.workers.setFocus(desk);
     } else {
       this.rig.go('overview');
@@ -236,6 +243,12 @@ export class Experience {
     }
     this.setHover(null);
     this.emit('focus', desk, desk ? this.assignment.get(desk.index) ?? null : null);
+  }
+
+  /** The next desk in hiring order that nobody sits at yet. */
+  firstVacant(): Desk | null {
+    for (const i of FILL_ORDER) if (!this.office.desks[i].occupied) return this.office.desks[i];
+    return null;
   }
 
   focusProject(project: Project) {
@@ -247,7 +260,7 @@ export class Experience {
     const cur = this.focusedDesk.current;
     if (!cur) return;
     // walk the floor in hiring order, including vacant desks at the end
-    const order = FILL_ORDER.map(([p, k]) => this.office.desks[p * 4 + k]);
+    const order = FILL_ORDER.map((i) => this.office.desks[i]);
     const occupiedOrder = order.filter((d) => d.occupied);
     const list = cur.occupied ? occupiedOrder : order;
     const i = list.indexOf(cur);
@@ -391,6 +404,9 @@ export class Experience {
     this.world.update(time);
     this.rig.update(dt);
     this.workers.update(dt, time, this.camera.position);
+    const fd = this.focusedDesk.current;
+    if (fd?.covered && this.rig.mode === 'focus' && !this.rig.isTransitioning()) this.office.sheets.uncover(fd);
+    this.office.sheets.update(dt);
     this.office.update();
     this.screens.update(dt, time);
 
@@ -398,12 +414,37 @@ export class Experience {
     shared.uCursor.value.y = this.cursorStrength;
 
     if (this.tilt) {
-      const focus = this.rig.mode === 'focus';
       const t = this.tilt;
-      t.offset = damp(t.offset, focus ? 0.02 : -0.06, 3, dt);
-      t.focusArea = damp(t.focusArea, focus ? 0.62 : 0.5, 3, dt);
+      // sharp band in NDC y: centre + half height. Intro and focus keep a fixed lens;
+      // the overview fits the band to the floor so every row of desks stays crisp
+      // and only the foreground grass and the far hills go soft.
+      let centre = this.rig.mode === 'focus' ? 0.02 : -0.06;
+      let half = this.rig.mode === 'focus' ? 0.3 : 0.18;
+      const band = this.rig.mode === 'overview' ? this.floorBand() : null;
+      if (band) {
+        centre = (band.lo + band.hi) / 2;
+        half = (band.hi - band.lo) / 2 + 0.05;
+      }
+      t.offset = damp(t.offset, centre, 4, dt);
+      t.focusArea = damp(t.focusArea, half + t.feather, 4, dt);
     }
     if (draw) this.composer.render(dt);
+  }
+
+  /** Vertical extent of the floor on screen (NDC y), or null while part of it is behind the lens. */
+  private floorBand() {
+    this.camera.updateMatrixWorld();
+    let lo = Infinity, hi = -Infinity;
+    for (const p of this.floorHull) {
+      const v = this._v.copy(p).applyMatrix4(this.camera.matrixWorldInverse);
+      if (v.z > -this.camera.near) return null;
+      v.applyMatrix4(this.camera.projectionMatrix);
+      lo = Math.min(lo, v.y);
+      hi = Math.max(hi, v.y);
+    }
+    lo = Math.max(lo, -1.2);
+    hi = Math.min(hi, 1.2);
+    return hi > lo ? { lo, hi } : null;
   }
 
   /** Viewport rect of a desk's CRT face — the case study grows out of it. */

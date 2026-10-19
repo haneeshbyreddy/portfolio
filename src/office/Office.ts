@@ -14,14 +14,15 @@ import {
 import { mulberry32 } from '../core/math';
 import { createScreenMaterial } from '../screens/ScreenMaterial';
 import { shared } from '../world/shared';
-import { buildStations, lawnBounds, PODS, ARM, type Station } from './layout';
+import { buildStations, lawnBounds, FOOTPRINT, type Station } from './layout';
 import { createOfficeMaterial, mat } from './builder';
+import { Sheets } from './Sheets';
 import {
   buildBooksGeometry,
   buildChairGeometry,
+  buildDeskBaseGeometry,
   buildMugGeometry,
   buildPapersGeometry,
-  buildPartitionGeometry,
   buildPlantGeometry,
   buildScreenGeometry,
   buildStationGeometry,
@@ -34,6 +35,8 @@ import {
 export interface Desk extends Station {
   index: number;
   occupied: boolean;
+  /** Vacant desks wait under a dust sheet. */
+  covered: boolean;
   screen: Mesh;
   screenMaterial: ReturnType<typeof createScreenMaterial>;
   hitBox: Box3;
@@ -54,7 +57,12 @@ export class Office {
   readonly root = new Object3D();
   readonly desks: Desk[] = [];
   readonly material = createOfficeMaterial();
+  readonly sheets: Sheets;
 
+  private stations: InstancedMesh;
+  private bases: InstancedMesh;
+  /** Covered desks whose sheet is (partly) off. */
+  private exposed = new Set<number>();
   private chairs: InstancedMesh;
   private mugs: InstancedMesh;
   private leds: InstancedMesh;
@@ -68,21 +76,15 @@ export class Office {
     const rand = mulberry32(42);
     const N = stations.length;
 
-    // --- desks (one instanced draw for the whole floor)
-    const stationMesh = new InstancedMesh(buildStationGeometry(), this.material, N);
-    stations.forEach((s, i) => stationMesh.setMatrixAt(i, s.matrix));
-    stationMesh.castShadow = shadows;
-    stationMesh.receiveShadow = shadows;
-    stationMesh.computeBoundingSphere();
-    this.root.add(stationMesh);
-
-    // --- partitions
-    const partitions = new InstancedMesh(buildPartitionGeometry(), this.material, PODS.length);
-    PODS.forEach((p, i) => partitions.setMatrixAt(i, mat(p.x, 0, p.z)));
-    partitions.castShadow = shadows;
-    partitions.receiveShadow = shadows;
-    partitions.computeBoundingSphere();
-    this.root.add(partitions);
+    // --- desks: full stations where someone works, bare legs under each sheet
+    this.stations = new InstancedMesh(buildStationGeometry(), this.material, N);
+    this.bases = new InstancedMesh(buildDeskBaseGeometry(), this.material, N);
+    for (const m of [this.stations, this.bases]) {
+      m.castShadow = shadows;
+      m.receiveShadow = shadows;
+      m.frustumCulled = false;
+      this.root.add(m);
+    }
 
     // --- chairs (dynamic: workers swivel them)
     this.chairs = new InstancedMesh(buildChairGeometry(), this.material, N);
@@ -120,7 +122,8 @@ export class Office {
       this.root.add(screen);
 
       const hitBox = new Box3();
-      for (const [x, y, z] of [[-0.66, 0, -0.5], [0.92, 0, -0.5], [-0.66, 1.4, 1.08], [0.92, 1.4, 1.08]]) {
+      const f = FOOTPRINT;
+      for (const [x, y, z] of [[f.x0, 0, f.z0], [f.x1, 0, f.z0], [f.x0, 1.4, f.z1], [f.x1, 1.4, f.z1]]) {
         hitBox.expandByPoint(new Vector3(x, y, z).applyMatrix4(s.matrix));
       }
 
@@ -128,16 +131,18 @@ export class Office {
         ...s,
         index: i,
         occupied: isOccupied,
+        covered: !isOccupied,
         screen,
         screenMaterial: material,
         hitBox,
         labelAnchor: new Vector3(0.1, 1.62, 0.55).applyMatrix4(s.matrix),
         screenCenter: new Vector3(SCREEN.center.x, SCREEN.center.y, SCREEN.center.z).applyMatrix4(s.matrix),
+        // an empty chair sits pulled back, clear of the sheet's hem
         chair: isOccupied
           ? { x: 0, z: 0, yaw: 0 }
-          : { x: (rand() - 0.5) * 0.12, z: 0.18 + rand() * 0.08, yaw: (rand() - 0.5) * 0.5 },
+          : { x: (rand() - 0.5) * 0.1, z: -0.13 - rand() * 0.07, yaw: (rand() - 0.5) * 0.4 },
         mugOverride: null,
-        hasMug: isOccupied || rand() < 0.25,
+        hasMug: isOccupied,
       };
       this.desks.push(desk);
 
@@ -145,16 +150,17 @@ export class Office {
       this.leds.setMatrixAt(i, _m.copy(s.matrix).multiply(_m2.makeTranslation(LED.x, LED.y, LED.z)));
       this.leds.setColorAt(i, new Color(isOccupied ? '#5dff9b' : '#ffb347').multiplyScalar(isOccupied ? 1.6 : 0.7));
 
+      if (desk.covered) return; // nothing on a desk under a sheet
       if (desk.hasMug) {
         const mi = this.mugIndex.size;
         this.mugIndex.set(i, mi);
         this.mugs.setColorAt(mi, new Color(mugColors[Math.floor(rand() * mugColors.length)]));
       }
-      if (rand() < (isOccupied ? 0.75 : 0.35)) {
+      if (rand() < 0.75) {
         papers.push(s.matrix.clone().multiply(mat(0.56 - rand() * 0.04, 0.74, 0.74 + rand() * 0.05, 0, (rand() - 0.5) * 0.4, 0)));
       }
       if (rand() < 0.35) plants.push(s.matrix.clone().multiply(mat(0.72, 0.74, 0.92, 0, rand() * 6, 0)));
-      if (rand() < (isOccupied ? 0.5 : 0.2)) books.push(s.matrix.clone().multiply(mat(-0.45, 0.74, 0.9, 0, (rand() - 0.5) * 0.5, 0)));
+      if (rand() < 0.5) books.push(s.matrix.clone().multiply(mat(-0.45, 0.74, 0.9, 0, (rand() - 0.5) * 0.5, 0)));
     });
     this.mugs.count = this.mugIndex.size;
     if (this.mugs.instanceColor) this.mugs.instanceColor.needsUpdate = true;
@@ -175,8 +181,30 @@ export class Office {
     addStatic(buildPapersGeometry(), papers, 'papers');
     addStatic(buildBooksGeometry(), books, 'books');
 
+    this.sheets = new Sheets(this.root, this.desks.filter((d) => d.covered), shadows);
+    this.sheets.onExpose = (desk, exposed) => {
+      if (exposed) this.exposed.add(desk.index);
+      else this.exposed.delete(desk.index);
+      this.refreshFurniture();
+    };
+    this.refreshFurniture();
     this.bakeContactShadows();
     this.update();
+  }
+
+  /** Full stations for open desks, bare legs (and dark screens) under sheets. */
+  private refreshFurniture() {
+    let full = 0, bare = 0;
+    for (const d of this.desks) {
+      const open = !d.covered || this.exposed.has(d.index);
+      if (open) this.stations.setMatrixAt(full++, d.matrix);
+      else this.bases.setMatrixAt(bare++, d.matrix);
+      d.screen.visible = open;
+    }
+    this.stations.count = full;
+    this.bases.count = bare;
+    this.stations.instanceMatrix.needsUpdate = true;
+    this.bases.instanceMatrix.needsUpdate = true;
   }
 
   /** Soft overcast contact shadows painted under the furniture, read by grass + ground. */
@@ -201,15 +229,6 @@ export class Office {
       ctx.restore();
     };
 
-    // partitions
-    for (const p of PODS) {
-      ctx.setTransform(S, 0, 0, S, (p.x - b.x0) * S, (p.z - b.z0) * S);
-      shape(26, 0.55, () => {
-        ctx.fillRect(-ARM - 0.15, -0.16, ARM * 2 + 0.3, 0.32);
-        ctx.fillRect(-0.16, -ARM - 0.15, 0.32, ARM * 2 + 0.3);
-      });
-      shape(70, 0.25, () => ctx.fillRect(-ARM, -ARM, ARM * 2, ARM * 2));
-    }
     // desks + chairs
     for (const d of this.desks) {
       const e = d.matrix.elements;
@@ -217,6 +236,8 @@ export class Office {
       ctx.setTransform(S * e[0], S * e[2], S * e[8], S * e[10], (e[12] - b.x0) * S, (e[14] - b.z0) * S);
       shape(22, 0.5, () => ctx.fillRect(-0.62, 0.32, 1.5, 0.75));
       shape(12, 0.55, () => ctx.fillRect(0.47, 0.36, 0.42, 0.68));
+      // a sheet's skirt keeps the light off a wider patch of lawn
+      if (d.covered) shape(34, 0.32, () => ctx.fillRect(-0.86, 0.12, 1.98, 1.16));
       const cx = d.chair.x, cz = d.chair.z;
       shape(16, 0.45, () => {
         ctx.beginPath();

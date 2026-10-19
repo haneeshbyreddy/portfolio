@@ -266,7 +266,7 @@ export class UI {
         case 'directory-close': this.toggleDirectory(false); break;
         case 'vacant': {
           this.toggleDirectory(false);
-          const vacant = exp.office.desks.find((d) => !d.occupied && d.quadrant === 0) ?? exp.office.desks.find((d) => !d.occupied);
+          const vacant = exp.firstVacant();
           if (vacant) setTimeout(() => exp.focus(vacant), 250);
           break;
         }

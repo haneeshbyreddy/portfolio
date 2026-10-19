@@ -98,13 +98,14 @@ export class CameraRig {
     const tall = this.layout === 'tall';
     const occupied = desk.occupied;
     // station space: chair at origin, +Z toward the monitor, +X = worker's left
+    // an open desk is framed a step further back, so its sheet can be whisked off in shot
     const camLocal = occupied
       ? new Vector3(0.66, 1.58, -0.98)
-      : new Vector3(0.12, 1.34, -0.5);
-    const targetLocal = new Vector3(0.0, 0.96, 0.6);
+      : new Vector3(0.24, 1.4, -1.12);
+    const targetLocal = occupied ? new Vector3(0.0, 0.96, 0.6) : new Vector3(0.03, 0.95, 0.6);
     if (tall) {
-      camLocal.set(occupied ? 0.46 : 0.08, occupied ? 1.62 : 1.38, occupied ? -1.0 : -0.62);
-      targetLocal.set(0.02, 0.93, 0.62);
+      camLocal.set(occupied ? 0.46 : 0.1, occupied ? 1.62 : 1.48, occupied ? -1.0 : -1.2);
+      targetLocal.set(0.02, occupied ? 0.93 : 0.92, 0.62);
     }
     p.pos.copy(camLocal).applyMatrix4(desk.matrix);
     p.target.copy(targetLocal).applyMatrix4(desk.matrix);
@@ -130,7 +131,7 @@ export class CameraRig {
     this.computeDesired();
     const dist = this.from.pos.distanceTo(this.desired.pos);
     this.tDur = this.reducedMotion ? 0.6 : duration ?? clamp(1.25 + dist * 0.035, 1.4, 2.4);
-    // desk-to-desk hops arc over the partitions; big moves get a gentle swoop
+    // desk-to-desk hops arc over the monitors; big moves get a gentle swoop
     this.lift = mode === 'focus' && this.from.pos.y < 3 ? clamp(dist * 0.18, 0.6, 2.4) : dist * 0.04;
     this.tStart = this.clock;
     this.transitioning = true;

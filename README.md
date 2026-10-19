@@ -2,11 +2,17 @@
 
 An office in an open field. Every desk is a project.
 
-A 3D portfolio built from the Severance one-sheet (order: cubicles, ink partitions,
+A 3D portfolio built from the Severance one-sheet (order: even rows of white desks,
 cream terminals) dropped into an overcast meadow (wind, hills, haze). Projects
-are people at desks; empty desks are open invitations. Click a desk and the
-camera leans over the worker's shoulder onto their monitor, which plays a live
-preview of the work.
+are people at desks; empty desks wait under dust sheets as open invitations.
+Click a desk and the camera leans over the worker's shoulder onto their monitor,
+which plays a live preview of the work. Visit an empty one and its sheet is
+whisked off before the terminal boots.
+
+The sheets are a small cloth simulation (`src/office/Cloth.ts`) baked in a worker
+at load (`src/office/sheetBake.ts`): each variant is dropped onto a desk, then
+pulled off while every frame is recorded. The reveal plays that recording; leaving
+plays it backward, so the sheet lands exactly where it started.
 
 Everything is procedural — no models, photos or video files. Geometry, people,
 monitor content and sound are all generated in code.
@@ -37,8 +43,8 @@ Edit `src/data/projects.ts`. Each entry hires one person and fills the next desk
 | `id`         | Seeds the worker's look and behaviour, so each one is stable    |
 | `url`        | Optional "Live site" / "Visit project" link                     |
 
-Need more desks? Add a pod to `PODS` in `src/office/layout.ts` and append its four
-quadrants to `FILL_ORDER`. The lawn, contact shadows and hit areas follow.
+Need more desks? Change `GRID` in `src/office/layout.ts`; `HIRING` sets which desks
+fill first. The lawn, contact shadows and hit areas follow.
 
 ### Using real work on the screens
 

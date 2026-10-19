@@ -19,7 +19,7 @@ export interface Finish {
   color: string;
   rough?: number;
   metal?: number;
-  /** 0..1 — adds a woven micro-texture (partitions, chair fabric). */
+  /** 0..1 — adds a woven micro-texture (chair fabric, mouse pad). */
   fabric?: number;
 }
 

@@ -1,6 +1,5 @@
 import { CylinderGeometry, ConeGeometry, PlaneGeometry } from 'three';
 import { GeoBuilder, frustumBox, mat, type Finish } from './builder';
-import { ARM, PARTITION_H } from './layout';
 import { palette } from '../world/palette';
 
 const F = {
@@ -14,8 +13,6 @@ const F = {
   key: { color: palette.keyCap, rough: 0.55 } as Finish,
   keyDark: { color: palette.keyDark, rough: 0.6 } as Finish,
   pad: { color: '#2a302c', rough: 0.95, fabric: 0.6 } as Finish,
-  partition: { color: palette.partition, rough: 0.95, fabric: 1 } as Finish,
-  alu: { color: palette.aluminium, rough: 0.32, metal: 0.75 } as Finish,
   chairFabric: { color: palette.chairFabric, rough: 0.95, fabric: 1 } as Finish,
   chairBase: { color: palette.chairBase, rough: 0.45 } as Finish,
   chrome: { color: palette.chrome, rough: 0.22, metal: 0.95 } as Finish,
@@ -34,17 +31,28 @@ export const KEYBOARD = { x: 0, y: 0.768, z: 0.47 };
 export const MOUSE = { x: -0.36, y: 0.756, z: 0.5 };
 export const MUG = { x: 0.34, y: 0.74, z: 0.5 };
 
+/** Pedestal, side panel and modesty panel: all a dust sheet leaves showing. */
+function addDeskBase(b: GeoBuilder) {
+  b.box(0.4, 0.7, 0.68, F.deskShade, mat(0.67, 0.35, 0.7), 0.01);
+  for (const y of [0.235, 0.47]) b.box(0.38, 0.005, 0.004, F.groove, mat(0.67, y, 0.359));
+  for (const y of [0.13, 0.36, 0.6]) b.box(0.12, 0.012, 0.014, F.handle, mat(0.67, y, 0.354), 0.004);
+  b.box(0.035, 0.705, 0.68, F.deskShade, mat(-0.6, 0.3525, 0.7), 0.006);
+  b.box(1.06, 0.42, 0.02, F.deskShade, mat(-0.07, 0.49, 1.02));
+  return b;
+}
+
+/** The desk under a dust sheet: only the parts below the hem. */
+export function buildDeskBaseGeometry() {
+  return addDeskBase(new GeoBuilder()).build();
+}
+
 /** Desk + CRT + keyboard + mouse, merged. Station space: chair at origin, +Z toward the monitor. */
 export function buildStationGeometry() {
   const b = new GeoBuilder();
 
   // desk
   b.box(1.5, 0.035, 0.75, F.desk, mat(0.13, 0.7225, 0.695), 0.008);
-  b.box(0.4, 0.7, 0.68, F.deskShade, mat(0.67, 0.35, 0.7), 0.01);
-  for (const y of [0.235, 0.47]) b.box(0.38, 0.005, 0.004, F.groove, mat(0.67, y, 0.359));
-  for (const y of [0.13, 0.36, 0.6]) b.box(0.12, 0.012, 0.014, F.handle, mat(0.67, y, 0.354), 0.004);
-  b.box(0.035, 0.705, 0.68, F.deskShade, mat(-0.6, 0.3525, 0.7), 0.006);
-  b.box(1.06, 0.42, 0.02, F.deskShade, mat(-0.07, 0.49, 1.02));
+  addDeskBase(b);
 
   // CRT terminal (cream, deep back — the Severance machine)
   b.box(0.25, 0.025, 0.23, F.crtShade, mat(0.04, 0.7525, 0.86), 0.008);
@@ -75,25 +83,6 @@ export function buildStationGeometry() {
   b.box(0.22, 0.003, 0.19, F.pad, mat(MOUSE.x, 0.7415, MOUSE.z));
   b.box(0.058, 0.03, 0.1, F.crt, mat(MOUSE.x, MOUSE.y, MOUSE.z), 0.014);
 
-  return b.build();
-}
-
-/** The cross of dark fabric partitions with aluminium caps. Pod space. */
-export function buildPartitionGeometry() {
-  const b = new GeoBuilder();
-  const H = PARTITION_H;
-  const y0 = 0.035;
-  const h = H - y0;
-  const L = ARM * 2;
-  b.box(L, h, 0.05, F.partition, mat(0, y0 + h / 2, 0), 0.012);
-  b.box(0.05, h, L, F.partition, mat(0, y0 + h / 2, 0), 0.012);
-  b.box(L + 0.02, 0.018, 0.064, F.alu, mat(0, H + 0.009, 0), 0.006);
-  b.box(0.064, 0.018, L + 0.02, F.alu, mat(0, H + 0.009, 0), 0.006);
-  b.box(0.078, H + 0.024, 0.078, F.alu, mat(0, (H + 0.024) / 2, 0), 0.01);
-  for (const [x, z] of [[ARM, 0], [-ARM, 0], [0, ARM], [0, -ARM]]) {
-    b.box(0.064, H + 0.012, 0.064, F.alu, mat(x, (H + 0.012) / 2, z), 0.01);
-    b.box(0.09, 0.03, 0.34, F.chairBase, mat(x, 0.015, z, 0, x !== 0 ? 0 : Math.PI / 2, 0), 0.008);
-  }
   return b.build();
 }
 
