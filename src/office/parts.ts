@@ -31,28 +31,17 @@ export const KEYBOARD = { x: 0, y: 0.768, z: 0.47 };
 export const MOUSE = { x: -0.36, y: 0.756, z: 0.5 };
 export const MUG = { x: 0.34, y: 0.74, z: 0.5 };
 
-/** Pedestal, side panel and modesty panel: all a dust sheet leaves showing. */
-function addDeskBase(b: GeoBuilder) {
-  b.box(0.4, 0.7, 0.68, F.deskShade, mat(0.67, 0.35, 0.7), 0.01);
-  for (const y of [0.235, 0.47]) b.box(0.38, 0.005, 0.004, F.groove, mat(0.67, y, 0.359));
-  for (const y of [0.13, 0.36, 0.6]) b.box(0.12, 0.012, 0.014, F.handle, mat(0.67, y, 0.354), 0.004);
-  b.box(0.035, 0.705, 0.68, F.deskShade, mat(-0.6, 0.3525, 0.7), 0.006);
-  b.box(1.06, 0.42, 0.02, F.deskShade, mat(-0.07, 0.49, 1.02));
-  return b;
-}
-
-/** The desk under a dust sheet: only the parts below the hem. */
-export function buildDeskBaseGeometry() {
-  return addDeskBase(new GeoBuilder()).build();
-}
-
 /** Desk + CRT + keyboard + mouse, merged. Station space: chair at origin, +Z toward the monitor. */
 export function buildStationGeometry() {
   const b = new GeoBuilder();
 
   // desk
   b.box(1.5, 0.035, 0.75, F.desk, mat(0.13, 0.7225, 0.695), 0.008);
-  addDeskBase(b);
+  b.box(0.4, 0.7, 0.68, F.deskShade, mat(0.67, 0.35, 0.7), 0.01);
+  for (const y of [0.235, 0.47]) b.box(0.38, 0.005, 0.004, F.groove, mat(0.67, y, 0.359));
+  for (const y of [0.13, 0.36, 0.6]) b.box(0.12, 0.012, 0.014, F.handle, mat(0.67, y, 0.354), 0.004);
+  b.box(0.035, 0.705, 0.68, F.deskShade, mat(-0.6, 0.3525, 0.7), 0.006);
+  b.box(1.06, 0.42, 0.02, F.deskShade, mat(-0.07, 0.49, 1.02));
 
   // CRT terminal (cream, deep back — the Severance machine)
   b.box(0.25, 0.025, 0.23, F.crtShade, mat(0.04, 0.7525, 0.86), 0.008);

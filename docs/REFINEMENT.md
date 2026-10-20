@@ -40,7 +40,7 @@ Where the mock stands after the first build (commit `7419661`, 2026-10-19), and 
 
 ## The 5 × 4 floor (2026-10-20)
 
-- **Grid.** 5 columns × 4 rows at 2.55 m × 3.0 m, down from 7 × 4 at 2.9 × 3.3. The five projects fill the front row; fifteen sheeted desks stand behind.
+- **Grid.** 5 columns × 4 rows at 2.55 m × 3.0 m, down from 7 × 4 at 2.9 × 3.3. The five projects fill the front row; fifteen empty desks stand behind.
 - **Shot.** A frontal tableau (Tati's *Playtime*, Gursky's rows, the Severance one-sheet). On wide screens it's a standing view from the edge of the floor on a ~35 mm lens (37° vertical), with the front row filling about 85% of the width. The distance comes from fitting both the width and the bottom edge, so 16:9 and ultrawide don't crop the chairs. On a phone, the shot rises to a plan view (about 43°, 40° lens).
 - **Light.** The meadow and hills lie under a thin cloud deck, with heavier patches drifting through on the wind. The office stands in a break, so the floor is the brightest thing in frame (`cloudGLSL`, also patched into the tree material).
 - **Lawn.** Mown to the floor plan: darker turf under each column and a light stripe down every aisle (`stripe()` in `shared.ts` reads `GRID`). Blade roots shade toward the turf instead of the soil, so the lawn reads as velvet rather than speckle.

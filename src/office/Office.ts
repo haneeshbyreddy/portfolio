@@ -16,11 +16,9 @@ import { createScreenMaterial } from '../screens/ScreenMaterial';
 import { shared } from '../world/shared';
 import { buildStations, lawnBounds, FOOTPRINT, type Station } from './layout';
 import { createOfficeMaterial, mat } from './builder';
-import { Sheets } from './Sheets';
 import {
   buildBooksGeometry,
   buildChairGeometry,
-  buildDeskBaseGeometry,
   buildMugGeometry,
   buildPapersGeometry,
   buildPlantGeometry,
@@ -35,8 +33,6 @@ import {
 export interface Desk extends Station {
   index: number;
   occupied: boolean;
-  /** Vacant desks wait under a dust sheet. */
-  covered: boolean;
   screen: Mesh;
   screenMaterial: ReturnType<typeof createScreenMaterial>;
   hitBox: Box3;
@@ -57,12 +53,8 @@ export class Office {
   readonly root = new Object3D();
   readonly desks: Desk[] = [];
   readonly material = createOfficeMaterial();
-  readonly sheets: Sheets;
 
   private stations: InstancedMesh;
-  private bases: InstancedMesh;
-  /** Covered desks whose sheet is (partly) off. */
-  private exposed = new Set<number>();
   private chairs: InstancedMesh;
   private mugs: InstancedMesh;
   private leds: InstancedMesh;
@@ -77,15 +69,12 @@ export class Office {
     const rand = mulberry32(42);
     const N = stations.length;
 
-    // --- desks: full stations where someone works, bare legs under each sheet
+    // --- desks
     this.stations = new InstancedMesh(buildStationGeometry(), this.material, N);
-    this.bases = new InstancedMesh(buildDeskBaseGeometry(), this.material, N);
-    for (const m of [this.stations, this.bases]) {
-      m.castShadow = shadows;
-      m.receiveShadow = shadows;
-      m.frustumCulled = false;
-      this.root.add(m);
-    }
+    this.stations.castShadow = shadows;
+    this.stations.receiveShadow = shadows;
+    this.stations.frustumCulled = false;
+    this.root.add(this.stations);
 
     // --- chairs (dynamic: workers swivel them)
     this.chairs = new InstancedMesh(buildChairGeometry(), this.material, N);
@@ -132,13 +121,12 @@ export class Office {
         ...s,
         index: i,
         occupied: isOccupied,
-        covered: !isOccupied,
         screen,
         screenMaterial: material,
         hitBox,
         labelAnchor: new Vector3(0.1, 1.62, 0.55).applyMatrix4(s.matrix),
         screenCenter: new Vector3(SCREEN.center.x, SCREEN.center.y, SCREEN.center.z).applyMatrix4(s.matrix),
-        // an empty chair sits pulled back, clear of the sheet's hem
+        // an empty chair sits pulled back from the desk, a little askew
         chair: isOccupied
           ? { x: 0, z: 0, yaw: 0 }
           : { x: (rand() - 0.5) * 0.1, z: -0.13 - rand() * 0.07, yaw: (rand() - 0.5) * 0.4 },
@@ -146,12 +134,13 @@ export class Office {
         hasMug: isOccupied && !handsets.has(i),
       };
       this.desks.push(desk);
+      this.stations.setMatrixAt(i, s.matrix);
 
       // LED: green when someone is working, amber standby otherwise
       this.leds.setMatrixAt(i, _m.copy(s.matrix).multiply(_m2.makeTranslation(LED.x, LED.y, LED.z)));
       this.leds.setColorAt(i, new Color(isOccupied ? '#5dff9b' : '#ffb347').multiplyScalar(isOccupied ? 1.6 : 0.7));
 
-      if (desk.covered) return; // nothing on a desk under a sheet
+      if (!isOccupied) return; // a vacant desk is bare
       if (desk.hasMug) {
         const mi = this.mugIndex.size;
         this.mugIndex.set(i, mi);
@@ -167,6 +156,7 @@ export class Office {
     if (this.mugs.instanceColor) this.mugs.instanceColor.needsUpdate = true;
     if (this.leds.instanceColor) this.leds.instanceColor.needsUpdate = true;
     this.leds.instanceMatrix.needsUpdate = true;
+    this.stations.instanceMatrix.needsUpdate = true;
 
     const addStatic = (geo: ReturnType<typeof buildPlantGeometry>, list: Matrix4[], name: string) => {
       if (!list.length) return;
@@ -182,30 +172,8 @@ export class Office {
     addStatic(buildPapersGeometry(), papers, 'papers');
     addStatic(buildBooksGeometry(), books, 'books');
 
-    this.sheets = new Sheets(this.root, this.desks.filter((d) => d.covered), shadows);
-    this.sheets.onExpose = (desk, exposed) => {
-      if (exposed) this.exposed.add(desk.index);
-      else this.exposed.delete(desk.index);
-      this.refreshFurniture();
-    };
-    this.refreshFurniture();
     this.bakeContactShadows();
     this.update();
-  }
-
-  /** Full stations for open desks, bare legs (and dark screens) under sheets. */
-  private refreshFurniture() {
-    let full = 0, bare = 0;
-    for (const d of this.desks) {
-      const open = !d.covered || this.exposed.has(d.index);
-      if (open) this.stations.setMatrixAt(full++, d.matrix);
-      else this.bases.setMatrixAt(bare++, d.matrix);
-      d.screen.visible = open;
-    }
-    this.stations.count = full;
-    this.bases.count = bare;
-    this.stations.instanceMatrix.needsUpdate = true;
-    this.bases.instanceMatrix.needsUpdate = true;
   }
 
   /** Soft overcast contact shadows painted under the furniture, read by grass + ground. */
@@ -237,8 +205,6 @@ export class Office {
       ctx.setTransform(S * e[0], S * e[2], S * e[8], S * e[10], (e[12] - b.x0) * S, (e[14] - b.z0) * S);
       shape(22, 0.5, () => ctx.fillRect(-0.62, 0.32, 1.5, 0.75));
       shape(12, 0.55, () => ctx.fillRect(0.47, 0.36, 0.42, 0.68));
-      // a sheet's skirt keeps the light off a wider patch of lawn
-      if (d.covered) shape(34, 0.32, () => ctx.fillRect(-0.86, 0.12, 1.98, 1.16));
       const cx = d.chair.x, cz = d.chair.z;
       shape(16, 0.45, () => {
         ctx.beginPath();

@@ -149,7 +149,6 @@ export class Experience {
     this.workers.phones = this.phones;
     this.library = new Library(q.tier === 'low');
     this.screens = new Screens(this.office.desks, this.assignment, this.library, this.phones, q.tier === 'low' ? [384, 288] : [512, 384]);
-    this.office.sheets.onClear = (desk) => this.screens.wake(desk);
 
     this.composer = this.createComposer();
     this.rig.onArrive = () => this.emit('arrive', this.rig.mode);
@@ -240,15 +239,12 @@ export class Experience {
     const timeout = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     this.emit('progress', 0.15);
     await frame();
-    const sheets = Promise.race([this.office.sheets.ready, timeout(6000)]);
     try {
       await Promise.race([this.renderer.compileAsync(this.scene, this.camera), timeout(2500)]);
     } catch {
       this.renderer.compile(this.scene, this.camera);
     }
     this.emit('progress', 0.6);
-    // the dust sheets bake in a worker meanwhile; they compile in the frames below
-    await sheets;
     // let the render loop draw a few frames (uploads, shadow maps) behind the loader
     const steps = 4;
     for (let i = 0; i < steps; i++) {
@@ -329,7 +325,6 @@ export class Experience {
   focus(desk: Desk | null) {
     if (desk && this.focusedDesk.current === desk) return;
     const prev = this.focusedDesk.current;
-    if (prev?.covered) this.office.sheets.cover(prev);
     if (prev) this.settle(prev);
     this.focusedDesk.current = desk;
     if (desk) {
@@ -338,8 +333,7 @@ export class Experience {
       this.selected = 0;
       this.rig.subject = project ? deviceFor(project.media[0]) : 'terminal';
       this.rig.go('focus', desk);
-      // a sheeted desk keeps its terminal dark until the sheet comes off on arrival
-      this.screens.focus(desk, desk.covered);
+      this.screens.focus(desk);
       this.workers.setFocus(desk);
       if (project) this.show(desk, project, 0);
     } else {
@@ -567,9 +561,6 @@ export class Experience {
     this.controls.update(dt);
     this.rig.update(dt);
     this.workers.update(dt, time, this.camera.position);
-    const fd = this.focusedDesk.current;
-    if (fd?.covered && this.rig.mode === 'focus' && !this.rig.isTransitioning()) this.office.sheets.uncover(fd);
-    this.office.sheets.update(dt);
     this.office.update();
     this.screens.update(dt, time);
 

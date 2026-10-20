@@ -4,15 +4,9 @@ An office in an open field. Every desk is a project.
 
 A 3D portfolio built from the Severance one-sheet (order: even rows of white desks,
 cream terminals) dropped into an overcast meadow (wind, hills, haze). Projects
-are people at desks; empty desks wait under dust sheets as open invitations.
+are people at desks; empty desks stand bare as open invitations.
 Click a desk and the camera leans over the worker's shoulder onto their monitor,
-which plays a live preview of the work. Visit an empty one and its sheet is
-whisked off before the terminal boots.
-
-The sheets are a small cloth simulation (`src/office/Cloth.ts`) baked in a worker
-at load (`src/office/sheetBake.ts`): each variant is dropped onto a desk, then
-pulled off while every frame is recorded. The reveal plays that recording; leaving
-plays it backward, so the sheet lands exactly where it started.
+which plays a live preview of the work. Visit an empty one and its terminal boots.
 
 Each desk carries everything its project shipped, on the thing it plays on: a
 website loops on the terminal as a real screen recording, a film plays on the same

@@ -445,7 +445,7 @@ kbd {
   opacity: 1;
 }
 
-/* at a desk the top right is all white dust sheets: shade it so the nav holds */
+/* at a desk the top right is pale sky and white desks: shade it so the nav holds */
 .scrim::before {
   content: '';
   position: absolute;

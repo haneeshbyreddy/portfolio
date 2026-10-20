@@ -99,7 +99,7 @@ function frontEdgeY(d: number, fov: number, el: number, y: number) {
  * The establishing shot is a tableau (Tati's Playtime, Gursky's rows): frontal,
  * symmetrical, everything sharp. On a wide screen it's a standing view from
  * the edge of the floor on a ~35 mm lens, close enough that the front row of
- * five reads as people at work and the sheeted rows recede behind them, with
+ * five reads as people at work and the empty rows recede behind them, with
  * the treeline still in frame. A phone can't hold five desks across at that
  * size, so it rises to a plan view and the grid itself becomes the picture.
  */
@@ -240,7 +240,7 @@ export class CameraRig {
     const occupied = desk.occupied;
     if (this.subject === 'phone') return this.phonePose(p, desk, tall);
     // station space: chair at origin, +Z toward the monitor, +X = worker's left
-    // an open desk is framed a step further back, so its sheet can be whisked off in shot
+    // an open desk is framed square-on and a step back: the bare desk, the empty chair
     const camLocal = occupied
       ? new Vector3(0.66, 1.58, -0.98)
       : new Vector3(0.24, 1.4, -1.12);

@@ -37,7 +37,6 @@ export const palette = {
   chairFabric: '#2b2f31',
   chairBase: '#18191b',
   chrome: '#a2a6a8',
-  sheet: '#e9e3d6',
 } as const;
 
 export const col = (hex: string) => new Color(hex);

@@ -224,7 +224,7 @@ export class UI {
         <div class="opening__frame">
           <p class="opening__beat">${em(`${words(total)} desks in an open *field*.`)}</p>
           <p class="opening__beat">${em(`${words(filled)} of them are at *work*.`)}</p>
-          <p class="opening__beat">${em(`The other ${lower(open)} wait under *sheets*.`)}</p>
+          <p class="opening__beat">${em(`The other ${lower(open)} are still *open*.`)}</p>
           <div class="opening__card">
             <span class="opening__credit">A portfolio by</span>
             ${wordmark('opening__mark')}
@@ -495,7 +495,7 @@ export class UI {
         <h2 class="sheet__title" style="--i:1">Open desk</h2>
         <p class="label sheet__kind" style="--i:2">Reserved for the next project</p>
         <p class="sheet__tagline" style="--i:3">This one is waiting for yours.</p>
-        <p class="sheet__summary" style="--i:4">Every desk on this floor is a piece of work. This one is still under its sheet — for a launch, a brand or a product that doesn’t exist yet.</p>
+        <p class="sheet__summary" style="--i:4">Every desk on this floor is a piece of work. This one is still empty — kept for a launch, a brand or a product that doesn’t exist yet.</p>
         <div class="sheet__actions" style="--i:5">
           <a class="btn btn--ink" href="mailto:${site.email}" data-pointer="lift"><span>Start a project</span>${arrowUpRight}</a>
         </div>

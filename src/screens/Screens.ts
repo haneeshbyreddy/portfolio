@@ -52,8 +52,6 @@ interface Monitor {
   boot: number;
   hover: number;
   hoverTarget: number;
-  /** A vacant terminal still under its sheet: don't boot yet. */
-  held: boolean;
 }
 
 interface Handset {
@@ -105,7 +103,6 @@ export class Screens {
         boot: 1,
         hover: 0,
         hoverTarget: 0,
-        held: false,
       };
       const u = desk.screenMaterial.uniforms;
       if (s.low) {
@@ -145,8 +142,8 @@ export class Screens {
     for (const s of this.monitors) s.hoverTarget = s.desk === desk ? 1 : 0;
   }
 
-  /** Show a desk's screens hi-res. A held vacant terminal waits for wake(). */
-  focus(desk: Desk | null, hold = false) {
+  /** Show a desk's screens hi-res. */
+  focus(desk: Desk | null) {
     const prev = this.focused;
     if (prev && prev.desk === desk) return;
     if (prev) {
@@ -157,7 +154,6 @@ export class Screens {
         u.uRes.value.set(prev.low.w, prev.low.h);
       } else {
         prev.onTarget = 0; // vacant terminal powers down
-        prev.held = false;
       }
       if (prev.media) this.library.stop(prev.media);
       const h = this.handset(prev.desk);
@@ -180,20 +176,11 @@ export class Screens {
       s.boot = 0;
       s.onTarget = 1;
       s.on = 1;
-      s.held = hold;
     }
     if (s.media) this.library.play(s.media);
     const h = this.handset(desk);
     if (h) h.phone.material.uniforms.uMap.value = this.hiPhone.tex;
     this.drawMonitor(s, this.hi, true);
-  }
-
-  /** The sheet is off: let the vacant terminal boot. */
-  wake(desk: Desk) {
-    const s = this.monitors.find((x) => x.desk === desk);
-    if (!s || !s.held) return;
-    s.held = false;
-    s.t = 0;
   }
 
   /** Change the terminal's channel to another piece of media. */
@@ -258,9 +245,7 @@ export class Screens {
 
       if (!s.project) {
         // vacant: boot sequence on focus, power-down on leave
-        if (s.held) {
-          s.t = 0;
-        } else if (s.onTarget > 0) {
+        if (s.onTarget > 0) {
           s.boot = Math.min(1, s.boot + dt / 1.1);
         } else {
           s.boot = Math.max(0, s.boot - dt / 0.35);
