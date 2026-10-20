@@ -16,9 +16,8 @@ reel and they lift the phone over their shoulder to show you while the camera
 leans in. The case study then opens the piece in its true shape: a browser
 window, a 16:9 player, or the same handset, with sound.
 
-The world itself is procedural: geometry, people and the meadow's sound are
-generated in code. The only files are each project's media in `public/work/` and
-the score in `public/audio/`.
+The world itself is procedural: geometry and people are generated in code. The
+only files are each project's media in `public/work/` and the sound in `public/audio/`.
 
 ## Art direction
 
@@ -41,8 +40,14 @@ surface carries grain.
   appear, then the title card holds, the fog lifts in depth order and the camera
   cranes up out of the grass. A second visit in a session goes straight to the title,
   and a click skips ahead.
-- **Sound.** An original boom-bap instrumental (`public/audio/score.m4a`: 78 bars at 88 BPM, cut on bar lines with a crossfade so it comes round without a seam, streamed) under the wind. It
-  is muffled in the fog and opens as it lifts, and steps back when a film or reel speaks.
+- **Sound.** On by default; browsers hold it until the visitor's first click, tap or key, and a
+  visitor who turns it off stays off on return. An original boom-bap instrumental
+  (`public/audio/score.m4a`: 78 bars at 88 BPM, cut on bar lines with a crossfade so it comes round
+  without a seam, streamed) over the meadow: a 30 s wind-in-grass loop and three distant larks, made
+  with ElevenLabs sound effects (`wind.m4a`, `lark-*.m4a`, loaded only once sound is playing). The
+  score is muffled in the fog and opens as it lifts, and steps back when a film or reel speaks. Levels
+  are set from measured loudness: score and films near −22 LUFS (films a touch under at the desk),
+  the meadow about 13 dB below. Films and reels are mastered near −16 LUFS; keep new ones there.
 
 ## Run
 

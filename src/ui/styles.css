@@ -228,6 +228,12 @@ kbd {
   animation-delay: -0.15s;
 }
 
+/* on, but the browser is waiting for a first touch: the bars stand still */
+.is-sound-locked [aria-pressed='true'] .meter i {
+  height: 6px;
+  animation: none;
+}
+
 @keyframes meter {
   from {
     height: 3px;

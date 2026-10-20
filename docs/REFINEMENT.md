@@ -23,7 +23,7 @@ Where the mock stands after the first build (commit `7419661`, 2026-10-19), and 
 - Media weight: about 30 MB of video across the five projects, loaded per desk (floor loops ~2 MB up front). Watch the first visit to a desk on a slow connection; the title card shows until the footage arrives.
 
 - Frame rate on real hardware. I only measured about 3.9M triangles and about 150 draw calls per frame, and I tested in a throttled preview pane. Test on an integrated GPU laptop and on a phone. Quality tiers live in `src/core/quality.ts`; force one with `?q=low|medium|high`.
-- Procedural sound on Safari and iOS.
+- Sound on a real iPhone: iOS ignores a video's volume, so there the films route through the Web Audio mixer (`Ambience.route`). Check their level and lip sync, and that the score starts on the first tap.
 - Bundle size is 911 KB (282 KB gzipped). Lazy-loading postprocessing and n8ao would shave the first load.
 
 ## The new art direction (2026-10-20)

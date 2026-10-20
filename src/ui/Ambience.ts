@@ -1,36 +1,96 @@
 /**
- * The soundtrack. A score, and a procedural meadow under it: wind through tall
- * grass (filtered noise breathing with the gusts), a distant lark now and then,
- * and the soft clatter of keyboards that grows when you lean over a desk.
+ * The soundtrack: a score, and under it the meadow (wind moving through the
+ * long grass and, now and then, a lark somewhere far off, both made for this
+ * floor with ElevenLabs sound effects). Films and reels play at their own
+ * level (see Library) and the score steps back for them.
  *
  * The score is an original boom-bap instrumental, cut on bar lines so it comes
  * round again without a seam. It streams through an <audio> element rather than
  * being decoded whole: three and a half minutes of PCM is too much to hold on a
  * phone. It is heard through the opening's fog, muffled, and opens up as the fog
- * lifts; when a film or a reel speaks, it steps back.
+ * lifts.
+ *
+ * Sound is on unless the visitor turned it off on an earlier visit. A browser
+ * keeps a page silent until it is touched, so the room is built at load and
+ * starts on the first click, tap or key, whichever comes first.
  */
 const SCORE = '/audio/score.m4a';
-/** Its level under the meadow: present, never in the way. */
+/** A seamless loop with WIND_PAD seconds of overlap at each end, so the codec's padding never lands inside it. */
+const WIND = '/audio/wind.m4a';
+const WIND_PAD = 0.5;
+const LARKS = ['/audio/lark-1.m4a', '/audio/lark-2.m4a', '/audio/lark-3.m4a'];
+
+/**
+ * Levels, set from measured loudness. The score (−12 LUFS as mastered) lands
+ * near −22 LUFS, where the films sit too. The wind and the larks are mastered
+ * to −24 LUFS and play about 13 dB under the score (the wind a little more in
+ * the fog, less at a desk): a bed you only notice when it stops.
+ */
+const MASTER = 0.55;
 const SCORE_LEVEL = 0.56;
+const WIND_LEVEL = 0.55;
+const LARK_LEVEL = 0.45;
+
+const PREF = 'fieldwork:sound';
+/** The events a browser accepts as the visitor's go-ahead to play sound. */
+const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
+
+function wanted() {
+  try {
+    return localStorage.getItem(PREF) !== 'off';
+  } catch {
+    return true;
+  }
+}
 
 export class Ambience {
+  /** Sound is on but the browser is still holding it back (or has just let go). */
+  onLock: (locked: boolean) => void = () => {};
+
   private ctx: AudioContext | null = null;
   private master!: GainNode;
-  private windGain!: GainNode;
-  private windFilter!: BiquadFilterNode;
-  private keysGain!: GainNode;
   private music!: GainNode;
   private musicTone!: BiquadFilterNode;
+  private wind!: GainNode;
+  private windTone!: BiquadFilterNode;
+  private larks!: GainNode;
   private score: HTMLAudioElement | null = null;
-  private timer = 0;
-  private sleep = 0;
-  private on = false;
-  private keyRate = 0.18;
+  /** The browser refused the score until the visitor touches the page (the room itself may already be running). */
+  private scoreBlocked = false;
+  private larkBuffers: AudioBuffer[] = [];
+  private meadow = false;
+  private nextLark = 0;
+  private on = wanted();
+  private wasLocked = true;
   private veil = 1;
   private ducked = false;
+  private focused = false;
+  private sleep = 0;
+
+  constructor() {
+    try {
+      this.init();
+    } catch {
+      this.ctx = null; // no Web Audio: a silent floor
+      return;
+    }
+    this.settle();
+    // a browser that already trusts the site lets it start without a touch
+    void this.ctx!.resume().catch(() => undefined);
+    window.setInterval(this.tick, 250);
+  }
 
   get enabled() {
     return this.on;
+  }
+
+  /** On, but not heard yet. */
+  get locked() {
+    return this.on && (!this.running || this.scoreBlocked);
+  }
+
+  private get running() {
+    return this.ctx?.state === 'running';
   }
 
   private init() {
@@ -40,34 +100,6 @@ export class Ambience {
     this.master.gain.value = 0;
     this.master.connect(ctx.destination);
 
-    // wind: brown-ish noise → band-pass, slowly modulated
-    const len = ctx.sampleRate * 4;
-    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
-    for (let c = 0; c < 2; c++) {
-      const d = buf.getChannelData(c);
-      let last = 0;
-      for (let i = 0; i < len; i++) {
-        const w = Math.random() * 2 - 1;
-        last = (last + 0.02 * w) / 1.02;
-        d[i] = last * 3.2;
-      }
-    }
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
-    this.windFilter = ctx.createBiquadFilter();
-    this.windFilter.type = 'bandpass';
-    this.windFilter.frequency.value = 420;
-    this.windFilter.Q.value = 0.6;
-    this.windGain = ctx.createGain();
-    this.windGain.gain.value = 0.5;
-    src.connect(this.windFilter).connect(this.windGain).connect(this.master);
-    src.start();
-
-    this.keysGain = ctx.createGain();
-    this.keysGain.gain.value = 0.25;
-    this.keysGain.connect(this.master);
-
     this.musicTone = ctx.createBiquadFilter();
     this.musicTone.type = 'lowpass';
     this.musicTone.Q.value = 0.5;
@@ -76,33 +108,119 @@ export class Ambience {
     this.music.gain.value = 0;
     this.musicTone.connect(this.music).connect(this.master);
 
+    // the wind's highs open and close with the gusts
+    this.windTone = ctx.createBiquadFilter();
+    this.windTone.type = 'lowpass';
+    this.windTone.Q.value = 0.4;
+    this.windTone.frequency.value = 9000;
+    this.wind = ctx.createGain();
+    this.wind.gain.value = 0;
+    this.windTone.connect(this.wind).connect(this.master);
+
+    this.larks = ctx.createGain();
+    this.larks.gain.value = LARK_LEVEL;
+    this.larks.connect(this.master);
+
+    ctx.addEventListener('statechange', () => this.settle());
+
     // nobody listens to a background tab
     document.addEventListener('visibilitychange', () => {
-      if (!this.on) return;
       if (document.hidden) {
         this.score?.pause();
         void ctx.suspend();
       } else {
-        void ctx.resume();
-        this.playScore();
+        void ctx.resume().catch(() => undefined);
+        if (this.on) this.playScore();
       }
     });
   }
 
-  /** Called inside the click that turned sound on, so every browser lets it play. */
+  /** The visitor's first touch of the page lets the sound out. The sound button handles its own press. */
+  private unlock = (e: Event) => {
+    if ((e.target as Element | null)?.closest?.('[data-act="sound"]')) return;
+    this.wake();
+  };
+
+  /** Runs inside the visitor's gesture: some browsers only listen then. */
+  private wake() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    if (ctx.state !== 'running') void ctx.resume().catch(() => undefined);
+    if (this.on) this.playScore();
+  }
+
+  /** Keep the controls and the mix in step with what the browser actually allows. */
+  private settle() {
+    if (this.running && this.on) {
+      this.playScore();
+      this.loadMeadow();
+    }
+    // listen for a touch for as long as something is held back (adding twice is a no-op)
+    const locked = this.locked;
+    for (const type of GESTURES) {
+      if (locked || !this.running) window.addEventListener(type, this.unlock, { capture: true, passive: true });
+      else window.removeEventListener(type, this.unlock, { capture: true });
+    }
+    if (locked !== this.wasLocked) {
+      this.wasLocked = locked;
+      this.onLock(locked);
+    }
+    this.fade(1.2);
+  }
+
   private playScore() {
-    const ctx = this.ctx!;
     if (!this.score) {
       const el = new Audio();
       el.src = SCORE;
       el.loop = true;
       el.preload = 'auto';
-      ctx.createMediaElementSource(el).connect(this.musicTone);
+      this.ctx!.createMediaElementSource(el).connect(this.musicTone);
+      el.addEventListener('playing', () => {
+        if (!this.scoreBlocked) return;
+        this.scoreBlocked = false;
+        this.settle();
+      });
       this.score = el;
     }
-    this.score.play().catch(() => {
-      /* no score: the meadow still has its wind */
-    });
+    if (this.score.paused) {
+      this.score.play().catch((e: DOMException) => {
+        // not allowed yet: the next touch tries again (a missing file just leaves the meadow)
+        if (e.name !== 'NotAllowedError' || this.scoreBlocked) return;
+        this.scoreBlocked = true;
+        this.settle();
+      });
+    }
+  }
+
+  /** The wind and the larks load once sound is actually going (never, for a visitor who keeps it off). */
+  private loadMeadow() {
+    if (this.meadow) return;
+    this.meadow = true;
+    const ctx = this.ctx!;
+    const load = (url: string) =>
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((b) => ctx.decodeAudioData(b));
+    load(WIND)
+      .then((buf) => {
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+        // any window exactly one loop long is seamless, wherever the decoder's padding put it
+        src.loopStart = WIND_PAD;
+        src.loopEnd = buf.duration - WIND_PAD;
+        src.connect(this.windTone);
+        src.start(0, WIND_PAD);
+      })
+      .catch(() => {
+        /* the score carries on alone */
+      });
+    this.nextLark = ctx.currentTime + 9 + Math.random() * 8;
+    for (const url of LARKS) {
+      load(url)
+        .then((buf) => void this.larkBuffers.push(buf))
+        .catch(() => undefined);
+    }
   }
 
   /** In the fog the score is a room away; as it clears, the highs come back. */
@@ -116,101 +234,102 @@ export class Ambience {
     if (this.ctx) this.musicTone.frequency.setTargetAtTime(this.toneFor(veil), this.ctx.currentTime, 0.12);
   }
 
-  /** Step back while something else on screen has the floor. */
+  /** Step back while a film or a reel is speaking. */
   duck(on: boolean) {
     if (on === this.ducked) return;
     this.ducked = on;
-    this.mix(on ? 0.35 : 1.6);
+    this.fade(on ? 0.35 : 1.6);
   }
 
-  private mix(seconds: number) {
-    if (!this.ctx) return;
-    const level = !this.on ? 0 : this.ducked ? 0.06 : SCORE_LEVEL;
-    this.music.gain.setTargetAtTime(level, this.ctx.currentTime, seconds / 3);
-  }
-
+  /** At a desk the field recedes a little. */
   setFocus(focused: boolean) {
-    this.keyRate = focused ? 0.75 : 0.18;
-    if (this.ctx) this.keysGain.gain.setTargetAtTime(focused ? 0.55 : 0.22, this.ctx.currentTime, 0.4);
+    this.focused = focused;
   }
 
+  /**
+   * Where a video's volume can't be set (iOS keeps it at the hardware's), its
+   * sound comes through here instead. Returns the gain to set it with.
+   */
+  route(el: HTMLMediaElement): AudioParam | null {
+    const ctx = this.ctx;
+    if (!ctx) return null;
+    try {
+      const g = ctx.createGain();
+      ctx.createMediaElementSource(el).connect(g).connect(ctx.destination);
+      return g.gain;
+    } catch {
+      return null;
+    }
+  }
+
+  private fade(seconds: number) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.master.gain.setTargetAtTime(this.on ? MASTER : 0, t, 0.6);
+    this.music.gain.setTargetAtTime(!this.on ? 0 : this.ducked ? 0.06 : SCORE_LEVEL, t, seconds / 3);
+  }
+
+  /** Turn sound on or off. While the browser is still holding sound back, a press only lets it out. */
   toggle() {
-    if (!this.ctx) this.init();
-    const ctx = this.ctx!;
+    if (!this.ctx) return this.on;
+    if (this.locked) {
+      this.wake();
+      return this.on;
+    }
     this.on = !this.on;
+    try {
+      if (this.on) localStorage.removeItem(PREF);
+      else localStorage.setItem(PREF, 'off');
+    } catch {
+      /* storage blocked: the choice lasts this visit */
+    }
     clearTimeout(this.sleep);
     if (this.on) {
-      if (ctx.state === 'suspended') void ctx.resume();
-      this.playScore();
-      this.loop();
+      this.wake();
     } else {
-      cancelAnimationFrame(this.timer);
-      // let the fade finish, then stop the tape and the clock
+      // let the fade finish, then stop the tape
       this.sleep = window.setTimeout(() => {
-        if (this.on) return;
-        this.score?.pause();
-        void ctx.suspend();
+        if (!this.on) this.score?.pause();
       }, 2400);
     }
-    this.master.gain.setTargetAtTime(this.on ? 0.55 : 0, ctx.currentTime, 0.6);
-    this.mix(1.2);
+    this.settle();
     return this.on;
   }
 
-  private click() {
+  private lark(t: number) {
     const ctx = this.ctx!;
-    const t = ctx.currentTime;
-    const n = ctx.createBufferSource();
-    const b = ctx.createBuffer(1, 600, ctx.sampleRate);
-    const d = b.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / 70);
-    n.buffer = b;
-    const f = ctx.createBiquadFilter();
-    f.type = 'highpass';
-    f.frequency.value = 1800 + Math.random() * 1600;
+    const src = ctx.createBufferSource();
+    src.buffer = this.larkBuffers[Math.floor(Math.random() * this.larkBuffers.length)];
+    // never quite the same bird twice
+    src.playbackRate.value = 0.94 + Math.random() * 0.12;
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = Math.random() * 1.4 - 0.7;
     const g = ctx.createGain();
-    g.gain.value = 0.25 + Math.random() * 0.25;
-    const pan = ctx.createStereoPanner();
-    pan.pan.value = Math.random() * 1.2 - 0.6;
-    n.connect(f).connect(g).connect(pan).connect(this.keysGain);
-    n.start(t);
+    g.gain.value = 0.6 + Math.random() * 0.4;
+    src.connect(g).connect(pan).connect(this.larks);
+    src.start(t);
   }
 
-  private chirp() {
-    const ctx = this.ctx!;
+  /** Four times a second: the gusts, and whether a lark is due. */
+  private tick = () => {
+    const ctx = this.ctx;
+    if (!ctx || !this.on || !this.running) return;
     const t = ctx.currentTime;
-    const notes = 2 + Math.floor(Math.random() * 4);
-    const pan = ctx.createStereoPanner();
-    pan.pan.value = Math.random() * 1.6 - 0.8;
-    pan.connect(this.master);
-    for (let i = 0; i < notes; i++) {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      const s = t + i * 0.11;
-      const f0 = 2600 + Math.random() * 1400;
-      o.frequency.setValueAtTime(f0, s);
-      o.frequency.exponentialRampToValueAtTime(f0 * (0.7 + Math.random() * 0.6), s + 0.08);
-      g.gain.setValueAtTime(0, s);
-      g.gain.linearRampToValueAtTime(0.025, s + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, s + 0.09);
-      o.connect(g).connect(pan);
-      o.start(s);
-      o.stop(s + 0.1);
-    }
-  }
+    // two slow swells that never line up with the 30 s loop
+    const gust = 0.5 + Math.sin(t * 0.13) * 0.3 + Math.sin(t * 0.31 + 1.3) * 0.2;
+    const level =
+      WIND_LEVEL *
+      (0.82 + gust * 0.3) *
+      (1 + this.veil * 0.3) * // the fog is weather: a touch more wind in it
+      (this.focused ? 0.72 : 1) *
+      (this.ducked ? 0.45 : 1);
+    this.wind.gain.setTargetAtTime(level, t, 1.2);
+    this.windTone.frequency.setTargetAtTime(5000 + gust * 9000, t, 1.5);
 
-  private loop = () => {
-    if (!this.on || !this.ctx) return;
-    const t = this.ctx.currentTime;
-    // gusts
-    const gust = 0.5 + Math.sin(t * 0.21) * 0.25 + Math.sin(t * 0.53 + 1) * 0.15;
-    this.windGain.gain.setTargetAtTime(0.25 + gust * 0.5, t, 0.5);
-    this.windFilter.frequency.setTargetAtTime(280 + gust * 520, t, 0.6);
-    if (Math.random() < this.keyRate * 0.3) {
-      this.click();
-      if (Math.random() < 0.5) setTimeout(() => this.on && this.click(), 60 + Math.random() * 90);
+    if (this.larkBuffers.length && t > this.nextLark) {
+      if (!this.ducked) this.lark(t);
+      this.nextLark = t + 20 + Math.random() * 28;
     }
-    if (Math.random() < 0.0016) this.chirp();
-    this.timer = requestAnimationFrame(this.loop);
   };
 }

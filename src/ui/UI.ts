@@ -91,6 +91,11 @@ export class UI {
     grain();
     this.build();
     this.bind();
+    // sound starts on; the browser lets it out at the visitor's first touch
+    exp.library.route = (v) => this.audio.route(v);
+    this.audio.onLock = (locked) => document.body.classList.toggle('is-sound-locked', locked);
+    document.body.classList.toggle('is-sound-locked', this.audio.locked);
+    this.syncSound();
     this.opening = new Opening($(this.root, '.opening'), exp, () => {
       document.body.classList.add('is-ready');
       exp.playIntro();
@@ -355,9 +360,8 @@ export class UI {
           break;
         }
         case 'sound': {
-          const on = this.audio.toggle();
-          exp.library.setSound(on);
-          this.root.querySelectorAll('[data-act="sound"]').forEach((b) => b.setAttribute('aria-pressed', String(on)));
+          this.audio.toggle();
+          this.syncSound();
           break;
         }
       }
@@ -514,12 +518,20 @@ export class UI {
     return $(this.caseEl, '.case__mute').getAttribute('aria-pressed') === 'true';
   }
 
+  /** Every sound control, and the work's own sound, follow the room. */
+  private syncSound() {
+    const on = this.audio.enabled;
+    this.exp.library.setSound(on);
+    this.root.querySelectorAll('[data-act="sound"]').forEach((b) => b.setAttribute('aria-pressed', String(on)));
+  }
+
   private openCase() {
     const desk = this.focused;
     const p = this.focusedProject;
     if (!desk || !p || this.caseOpen) return;
     this.caseOpen = true;
     document.body.classList.add('is-case');
+    this.exp.library.setScreening(true);
     this.exp.controls.enabled = false;
     const gen = ++this.caseGen;
     const live = siteOf(p);
@@ -662,6 +674,7 @@ export class UI {
     if (!this.caseOpen) return;
     this.caseOpen = false;
     document.body.classList.remove('is-case');
+    this.exp.library.setScreening(false);
     this.exp.controls.enabled = !this.dir.classList.contains('is-open');
     const gen = ++this.caseGen;
     const frame = $(this.caseEl, '.case__frame');

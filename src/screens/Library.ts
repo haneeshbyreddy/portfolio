@@ -8,11 +8,27 @@ interface Clip {
   floor: HTMLVideoElement | null;
   /** Full quality, made the first time someone sits down at the desk. */
   full: HTMLVideoElement | null;
+  /** Its level, where the element's own volume can't be set. */
+  gain: AudioParam | null;
 }
 
 export type Frame = HTMLVideoElement | HTMLImageElement;
 
 const ready = (v: HTMLVideoElement | null): v is HTMLVideoElement => !!v && v.readyState >= 2 && v.videoWidth > 0;
+
+/**
+ * How loud the work plays. The films and reels are mastered near −16 LUFS;
+ * these bring them to the score's level (about −22) in the case study and a
+ * little under it at the desk, where the sound comes from the machine in shot.
+ */
+const LEVEL = { desk: 0.4, screen: 0.5 };
+
+/** iOS keeps every video at the hardware volume and reads back 1. */
+const volumeWorks = (() => {
+  const a = document.createElement('audio');
+  a.volume = 0.5;
+  return a.volume === 0.5;
+})();
 
 /**
  * Every video on the floor. Out on the lawn each monitor plays a tiny silent
@@ -28,6 +44,9 @@ export class Library {
   private audible: Media | null = null;
   /** The case study sets its own volume, whatever the floor's sound is doing. */
   private forced = new Map<Media, boolean>();
+  private level = LEVEL.desk;
+  /** Sends a video's sound through the room's mixer (where its volume can't be set). */
+  route: ((v: HTMLVideoElement) => AudioParam | null) | null = null;
 
   constructor(private lite: boolean) {
     this.tray = document.createElement('div');
@@ -42,7 +61,7 @@ export class Library {
       const poster = new Image();
       poster.decoding = 'async';
       poster.src = m.poster;
-      c = { media: m, poster, floor: null, full: null };
+      c = { media: m, poster, floor: null, full: null, gain: null };
       this.clips.set(m, c);
     }
     return c;
@@ -83,7 +102,10 @@ export class Library {
   /** Full-quality playback, from the top unless `resume`. Returns the element (the case study shows it). */
   play(m: Media, resume = false) {
     const c = this.clip(m);
-    if (!c.full) c.full = this.video(m.src, true, m.poster);
+    if (!c.full) {
+      c.full = this.video(m.src, true, m.poster);
+      if (m.kind !== 'site' && !volumeWorks) c.gain = this.route?.(c.full) ?? null;
+    }
     const v = c.full;
     if (!resume && v.currentTime > 0.05) v.currentTime = 0;
     this.applyVolume(c);
@@ -143,6 +165,12 @@ export class Library {
     this.refresh();
   }
 
+  /** The case study is open: the work has the room to itself. */
+  setScreening(on: boolean) {
+    this.level = on ? LEVEL.screen : LEVEL.desk;
+    this.refresh();
+  }
+
   clearForced() {
     this.forced.clear();
     this.refresh();
@@ -165,7 +193,8 @@ export class Library {
     if (!c.full) return;
     const on = this.forced.get(c.media) ?? (this.sound && c.media === this.audible);
     c.full.muted = !on;
-    c.full.volume = 0.9;
+    if (c.gain) c.gain.value = this.level;
+    else c.full.volume = this.level;
   }
 
   private refresh() {
