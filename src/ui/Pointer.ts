@@ -15,6 +15,8 @@
 type Mode = 'free' | 'desk' | 'drag' | 'highlight' | 'lift';
 
 const DOT = 18;
+/** On paper the pointer is a pencil point, not a light. */
+const NIB = 8;
 const DESK = 34;
 const DRAG = 12;
 /** How far a highlight leans towards the hand: share of the offset, and limits. */
@@ -53,6 +55,9 @@ export class Pointer {
   private released = Infinity;
   private target: HTMLElement | null = null;
   private targetRadius = 0;
+  /** What's under the hand, from the last hit test. */
+  private hit: HTMLElement | null = null;
+  private onPaper = false;
   private mouse = { x: innerWidth / 2, y: innerHeight / 2 };
   private pressed = false;
   private visible = false;
@@ -92,6 +97,7 @@ export class Pointer {
 
   private pick(): HTMLElement | null {
     const hit = document.elementFromPoint(this.mouse.x, this.mouse.y) as HTMLElement | null;
+    this.hit = hit;
     const t = hit?.closest<HTMLElement>('[data-pointer], button, a') ?? null;
     if (t && t.dataset.pointer !== 'none' && !(t as HTMLButtonElement).disabled) return t;
     // magnetism: the current control keeps the hand through hairline gaps
@@ -139,8 +145,14 @@ export class Pointer {
     const dragging = document.body.classList.contains('is-dragging');
     this.setTarget(dragging ? null : this.pick());
     const t = this.target;
+    const paper = !dragging && !!this.hit?.closest('.paper');
+    if (paper !== this.onPaper) {
+      this.onPaper = paper;
+      this.el.classList.toggle('on-paper', paper);
+    }
+    const dot = paper ? NIB : DOT;
 
-    let tx = this.mouse.x, ty = this.mouse.y, tw = DOT, th = DOT, tr = DOT / 2;
+    let tx = this.mouse.x, ty = this.mouse.y, tw = dot, th = dot, tr = dot / 2;
     if (t) {
       const lift = t.dataset.pointer === 'lift';
       this.setMode(lift ? 'lift' : 'highlight');

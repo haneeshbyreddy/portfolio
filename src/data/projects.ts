@@ -1,128 +1,209 @@
 /**
  * The portfolio. Every entry here puts a person at a desk.
- * Add a project and the next desk in FILL_ORDER gets a new hire whose monitor
- * plays this project's preview. Order = seniority on the floor.
+ * Add a project and it gets a new hire. The projects sit in a line along the
+ * front row (`fillOrder` in `src/office/layout.ts`), in this order from left
+ * to right.
  *
- * All projects below are placeholders — swap in your own work.
+ * A project ships with one or more pieces of media, and each one lives on the
+ * desk as the thing it plays on: a website and a film on the terminal, a
+ * vertical reel on the worker's phone. The first piece is what the desk shows
+ * when you arrive. Files live in `public/work/<project id>/`.
  */
 
-export type Discipline = 'landing' | 'saas' | 'film' | 'brand' | 'app';
+interface MediaBase {
+  /** Short name in the desk's media list: "Website", "Launch reel". */
+  title: string;
+  /** Full-quality file, played at the desk and in the case study. */
+  src: string;
+  /** A small, silent loop for the monitor while you're out on the floor. */
+  floor?: string;
+  /** First frame, shown while the video loads and as the thumbnail. */
+  poster: string;
+}
+
+/** A screen recording of a live site, looped on the terminal. */
+export interface SiteMedia extends MediaBase {
+  kind: 'site';
+  url: string;
+}
+
+/** A 16:9 film, played on the terminal like a tape. */
+export interface FilmMedia extends MediaBase {
+  kind: 'film';
+  /** Seconds. */
+  duration: number;
+}
+
+/** A 9:16 video, shown on the worker's phone. */
+export interface ReelMedia extends MediaBase {
+  kind: 'reel';
+  duration: number;
+}
+
+export type Media = SiteMedia | FilmMedia | ReelMedia;
+
+export type Device = 'terminal' | 'phone';
+
+/** Where on the desk a piece of media plays. */
+export const deviceFor = (m: Media): Device => (m.kind === 'reel' ? 'phone' : 'terminal');
 
 export interface Project {
   id: string;
   title: string;
   client: string;
   year: number;
-  discipline: Discipline;
+  /** What shipped, in a few words: "Website and launch reel". */
+  kind: string;
   summary: string;
   role: string;
   stack: string[];
-  /** The project's own palette — drives its screen and the panel accent. */
+  /** The project's own palette — drives its title cards on the monitor while the footage loads. */
   palette: { bg: string; ink: string; accent: string; accent2: string };
-  /** One short line shown on the screen hero / title card. */
+  /** One short line under the title. */
   tagline: string;
-  url?: string;
+  /** Three facts from the work itself, shown big in the case study. */
+  facts: [string, string][];
+  media: Media[];
 }
 
-/** `kind` names one piece of work: "Orbit — a landing page". */
-export const DEPARTMENTS: Record<Discipline, { name: string; short: string; kind: string }> = {
-  landing: { name: 'Landing Pages', short: 'Web', kind: 'Landing page' },
-  saas: { name: 'SaaS Product', short: 'Product', kind: 'SaaS product' },
-  film: { name: 'Brand Film', short: 'Motion', kind: 'Brand film' },
-  brand: { name: 'Brand Identity', short: 'Identity', kind: 'Brand identity' },
-  app: { name: 'Mobile Apps', short: 'App', kind: 'Mobile app' },
-};
+const work = (id: string, file: string) => `/work/${id}/${file}`;
 
 export const projects: Project[] = [
   {
-    id: 'orbit',
-    title: 'Orbit',
-    client: 'Orbit Money',
+    id: 'hyderabaddies',
+    title: 'Hyderabaddies',
+    client: 'Hyderabaddies',
     year: 2026,
-    discipline: 'landing',
-    tagline: 'Money that moves at the speed of you.',
+    kind: 'Website and launch reel',
+    tagline: 'Somebody is already going. Go with them.',
     summary:
-      'A launch site for a cross-border payments startup. Scroll-driven storytelling, a live FX ticker and a card that follows the cursor through the page.',
-    role: 'Art direction, design, front-end',
-    stack: ['Figma', 'Astro', 'GSAP', 'WebGL'],
-    palette: { bg: '#f2eee6', ink: '#141414', accent: '#ff5b1f', accent2: '#1f3cff' },
+      'An invite-only way to find company for plans already happening in Hyderabad. The brand is built from the city: a cat on the Charminar, paper kites, form stamps, and a reel cut like a group chat.',
+    role: 'Brand, website, reel',
+    stack: ['Next.js'],
+    palette: { bg: '#c1271b', ink: '#fff3db', accent: '#fcc012', accent2: '#8d0116' },
+    facts: [['1', 'City, by invitation'], ['0:40', 'Launch reel'], ['0', 'DMs before meeting']],
+    media: [
+      {
+        kind: 'site',
+        title: 'Website',
+        url: 'https://hyderabaddies.in',
+        src: work('hyderabaddies', 'site.mp4'),
+        floor: work('hyderabaddies', 'site-floor.mp4'),
+        poster: work('hyderabaddies', 'site.jpg'),
+      },
+      {
+        kind: 'reel',
+        title: 'Launch reel',
+        duration: 40,
+        src: work('hyderabaddies', 'reel.mp4'),
+        floor: work('hyderabaddies', 'reel-floor.mp4'),
+        poster: work('hyderabaddies', 'reel.jpg'),
+      },
+    ],
   },
   {
-    id: 'halcyon',
-    title: 'Halcyon',
-    client: 'Halcyon Analytics',
-    year: 2025,
-    discipline: 'saas',
-    tagline: 'Revenue intelligence for subscription teams.',
+    id: 'hansanet',
+    title: 'HansaNet',
+    client: 'HansaNet',
+    year: 2026,
+    kind: 'SaaS, live and paid for',
+    tagline: 'The big ISPs have a control room. Now you do.',
     summary:
-      'A calm analytics workspace for finance teams drowning in dashboards. Designed the system, the charting language and the onboarding from zero to first insight.',
-    role: 'Product design, design system',
-    stack: ['Figma', 'React', 'D3', 'Storybook'],
-    palette: { bg: '#0f1513', ink: '#e8eee9', accent: '#7cf0b2', accent2: '#f4c86a' },
+      'A live SaaS for Indian ISPs with 500 to 20,000 homes, and eight of them pay for it every month. One box in the rack finds the cut, pages the crew on WhatsApp and tells the homes behind it. The site tells it as one street going dark.',
+    role: 'Product, design, front-end',
+    stack: ['HTML', 'CSS', 'JavaScript'],
+    palette: { bg: '#000000', ink: '#e6e6e6', accent: '#5ac8bc', accent2: '#70b8ff' },
+    facts: [['8', 'ISPs paying monthly'], ['₹20k', 'Monthly revenue'], ['₹3', 'A home, a month']],
+    media: [
+      {
+        kind: 'site',
+        title: 'Website',
+        url: 'https://hansanet.in',
+        src: work('hansanet', 'site.mp4'),
+        floor: work('hansanet', 'site-floor.mp4'),
+        poster: work('hansanet', 'site.jpg'),
+      },
+    ],
   },
   {
-    id: 'moss-ember',
-    title: 'Moss & Ember',
-    client: 'Moss & Ember Roasters',
-    year: 2025,
-    discipline: 'brand',
-    tagline: 'Slow coffee from small farms.',
+    id: 'ayuja',
+    title: 'Ayuja',
+    client: 'Ayuja Life Care',
+    year: 2026,
+    kind: 'Brand film',
+    tagline: 'For every life inside your gate.',
     summary:
-      'Identity for a specialty roaster: a mark drawn from a roasting drum, an earthy palette and a packaging system that flexes across forty single origins.',
-    role: 'Brand identity, packaging',
-    stack: ['Illustrator', 'Glyphs', 'Blender'],
-    palette: { bg: '#e9e1d2', ink: '#2b2722', accent: '#b4532d', accent2: '#4d5c3a' },
+      'A film for Ayuja’s home services inside Muppa’s Melody, a gated community in Hyderabad. One day, from laundry at 7:30 to a balcony selfie at dusk, each service a small human moment.',
+    role: 'Script, direction, edit',
+    stack: ['Nano Banana', 'Kling', 'ElevenLabs', 'FFmpeg'],
+    palette: { bg: '#f2eee5', ink: '#123c3e', accent: '#178a87', accent2: '#e4a14b' },
+    facts: [['1:19', 'Runtime'], ['6', 'Services in one day'], ['1', 'Gated community']],
+    media: [
+      {
+        kind: 'film',
+        title: 'A day in the life',
+        duration: 79,
+        src: work('ayuja', 'film.mp4'),
+        floor: work('ayuja', 'film-floor.mp4'),
+        poster: work('ayuja', 'film.jpg'),
+      },
+    ],
   },
   {
-    id: 'northbound',
-    title: 'Northbound',
-    client: 'Northbound Outfitters',
-    year: 2024,
-    discipline: 'film',
-    tagline: 'Find your north.',
+    id: 'rbot',
+    title: 'R-Bot',
+    client: 'R-Bot',
+    year: 2026,
+    kind: 'Product website',
+    tagline: 'Hire faster. With AI precision.',
     summary:
-      'A ninety-second brand film for an outdoor label, made entirely in 3D. Layered ridgelines, long light and a type system that cuts on the beat.',
-    role: 'Direction, 3D, motion design',
-    stack: ['Blender', 'After Effects', 'Cinema 4D'],
-    palette: { bg: '#0d0f12', ink: '#f1ede4', accent: '#d9a55b', accent2: '#6f8fa6' },
+      'One place where a whole team finds, screens and hires together. The site follows one hire on a routing slip through seven desks, each adding to a single file that becomes the employee record.',
+    role: 'Product, design, front-end',
+    stack: ['Next.js', 'Vercel'],
+    palette: { bg: '#e9e1c8', ink: '#26231e', accent: '#1f4ed8', accent2: '#e3ce9a' },
+    facts: [['7', 'Roles, one file'], ['1', 'Proctored test'], ['0', 'Things typed twice']],
+    media: [
+      {
+        kind: 'site',
+        title: 'Website',
+        url: 'https://resourcingbot.vercel.app',
+        src: work('rbot', 'site.mp4'),
+        floor: work('rbot', 'site-floor.mp4'),
+        poster: work('rbot', 'site.jpg'),
+      },
+    ],
   },
   {
-    id: 'parcel',
-    title: 'Parcel',
-    client: 'Parcel Inc.',
-    year: 2024,
-    discipline: 'app',
-    tagline: 'Every delivery, beautifully on time.',
+    id: 'faces',
+    title: 'Printed Faces',
+    client: 'Decision memo',
+    year: 2026,
+    kind: 'Interactive memo',
+    tagline: 'Scanning faces with an iPhone and printing them as ₹2,500 gifts.',
     summary:
-      'A delivery-tracking app that turns anxious refreshing into a glanceable live map. Shipped to 1.2M users with a 4.8 rating.',
-    role: 'Product design, prototyping',
-    stack: ['Figma', 'SwiftUI', 'Rive'],
-    palette: { bg: '#eef0f6', ink: '#111827', accent: '#4f46e5', accent2: '#22c55e' },
-  },
-  {
-    id: 'kiln',
-    title: 'Kiln',
-    client: 'Kiln Ceramics Studio',
-    year: 2023,
-    discipline: 'landing',
-    tagline: 'Made by hand. Fired with patience.',
-    summary:
-      'An editorial storefront for a ceramics studio — big photography, quiet type and a booking flow for wheel-throwing classes.',
-    role: 'Design, Shopify development',
-    stack: ['Figma', 'Shopify', 'Liquid'],
-    palette: { bg: '#efe6db', ink: '#2a1f1a', accent: '#c4693a', accent2: '#7b8a6a' },
-  },
-  {
-    id: 'atlas',
-    title: 'Atlas',
-    client: 'Atlas Cloud',
-    year: 2023,
-    discipline: 'saas',
-    tagline: 'Infrastructure you can actually see.',
-    summary:
-      'A developer console that maps services, deploys and costs onto one living graph. Led the visual language and the command palette.',
-    role: 'Product design, front-end',
-    stack: ['Figma', 'Next.js', 'Canvas'],
-    palette: { bg: '#0b0d17', ink: '#e6e8f2', accent: '#8b9bff', accent2: '#ff7ab6' },
+      'Should we start a 3D-printed portrait business? Six answers on one page, each with its evidence folded underneath, drawn to true scale, with twenty hard words defined on hover.',
+    role: 'Research, writing, design',
+    stack: ['HTML', 'SVG', 'Vercel'],
+    palette: { bg: '#edece8', ink: '#16161a', accent: '#5b3fd1', accent2: '#c87c05' },
+    facts: [['6', 'Answers, one page'], ['₹7,000', 'To test before ₹65,000'], ['30', 'Faces to pay back']],
+    media: [
+      {
+        kind: 'site',
+        title: 'Website',
+        url: 'https://3dprinting-seven.vercel.app',
+        src: work('faces', 'site.mp4'),
+        floor: work('faces', 'site-floor.mp4'),
+        poster: work('faces', 'site.jpg'),
+      },
+    ],
   },
 ];
+
+/** The project's website, if it has one. */
+export const siteOf = (p: Project) => p.media.find((m): m is SiteMedia => m.kind === 'site');
+
+/** "hyderabaddies.in" from "https://hyderabaddies.in/". */
+export const domainOf = (url: string) => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+/** "1:19" from 79. */
+export const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;

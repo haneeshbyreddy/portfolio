@@ -1,8 +1,10 @@
 import { Color, ShaderMaterial, Texture, Vector2 } from 'three';
+import { shared } from '../world/shared';
 
 /**
  * CRT face: slight barrel, fine scanlines, phosphor bloom, a glass layer that
- * reflects the overcast sky, and the classic power-on (dot → line → frame).
+ * reflects the overcast sky, the classic power-on (dot → line → frame), and a
+ * channel change (the picture rolls, tears and drowns in snow for a beat).
  */
 export function createScreenMaterial() {
   return new ShaderMaterial({
@@ -14,8 +16,11 @@ export function createScreenMaterial() {
       uTime: { value: 0 },
       uHover: { value: 0 },
       uFocus: { value: 0 },
+      uSwitch: { value: 0 },
       uRes: { value: new Vector2(512, 384) },
       uGlass: { value: new Color('#b9c4c6') },
+      uVeil: shared.uVeil,
+      uFogColor: shared.uFogColor,
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -34,12 +39,19 @@ export function createScreenMaterial() {
     `,
     fragmentShader: /* glsl */ `
       uniform sampler2D uMap;
-      uniform float uHasMap, uOn, uBoot, uTime, uHover, uFocus;
+      uniform float uHasMap, uOn, uBoot, uTime, uHover, uFocus, uSwitch;
       uniform vec2 uRes;
-      uniform vec3 uGlass;
+      uniform vec3 uGlass, uFogColor;
+      uniform float uVeil;
       varying vec2 vUv;
       varying vec3 vN;
       varying vec3 vV;
+
+      float hash12(vec2 p) {
+        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+      }
 
       void main() {
         vec2 uv = vUv;
@@ -47,12 +59,27 @@ export function createScreenMaterial() {
         float r2 = dot(cc, cc);
         vec2 buv = 0.5 + cc * (1.0 + 0.055 * r2) * 0.985;
 
+        // channel change: lines tear sideways and the frame rolls
+        float sw = uSwitch;
+        float frameNo = floor(uTime * 30.0);
+        if (sw > 0.0) {
+          float row = floor(buv.y * 160.0);
+          buv.x += (hash12(vec2(row, frameNo)) - 0.5) * 0.16 * sw * sw;
+          buv.y = fract(buv.y + sw * sw * 0.42);
+        }
+
         vec3 img = vec3(0.0);
         if (uHasMap > 0.5) {
           img = texture2D(uMap, buv).rgb;
           // tiny chromatic fringe
           img.r = mix(img.r, texture2D(uMap, buv + vec2(0.0012, 0.0)).r, 0.5);
           img.b = mix(img.b, texture2D(uMap, buv - vec2(0.0012, 0.0)).b, 0.5);
+        }
+        // snow, and the dark band of the vertical blank rolling through
+        if (sw > 0.0) {
+          float snow = hash12(floor(buv * uRes * 0.5) + frameNo * 17.0);
+          img = mix(img, vec3(snow * 0.85), smoothstep(0.15, 0.85, sw));
+          img *= 1.0 - smoothstep(0.0, 0.04, sw) * (1.0 - smoothstep(0.0, 0.06, abs(fract(buv.y + 0.5) - 0.5) - 0.02)) * 0.9;
         }
         float inside = step(0.0, buv.x) * step(buv.x, 1.0) * step(0.0, buv.y) * step(buv.y, 1.0);
 
@@ -85,6 +112,7 @@ export function createScreenMaterial() {
         glass += uGlass * streak * 0.07;
 
         vec3 col = glass * (1.0 - uOn * 0.55) + emissive;
+        col = mix(col, uFogColor, uVeil);
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
       }

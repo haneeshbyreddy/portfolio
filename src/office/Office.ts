@@ -68,7 +68,8 @@ export class Office {
   private leds: InstancedMesh;
   private mugIndex = new Map<number, number>();
 
-  constructor(scene: Scene, occupied: Set<number>, shadows: boolean) {
+  /** `handsets`: desks whose worker keeps a phone in a stand where the mug would be. */
+  constructor(scene: Scene, occupied: Set<number>, shadows: boolean, handsets = new Set<number>()) {
     this.root.name = 'office';
     scene.add(this.root);
 
@@ -142,7 +143,7 @@ export class Office {
           ? { x: 0, z: 0, yaw: 0 }
           : { x: (rand() - 0.5) * 0.1, z: -0.13 - rand() * 0.07, yaw: (rand() - 0.5) * 0.4 },
         mugOverride: null,
-        hasMug: isOccupied,
+        hasMug: isOccupied && !handsets.has(i),
       };
       this.desks.push(desk);
 
@@ -156,7 +157,7 @@ export class Office {
         this.mugIndex.set(i, mi);
         this.mugs.setColorAt(mi, new Color(mugColors[Math.floor(rand() * mugColors.length)]));
       }
-      if (rand() < 0.75) {
+      if (rand() < 0.75 && !handsets.has(i)) {
         papers.push(s.matrix.clone().multiply(mat(0.56 - rand() * 0.04, 0.74, 0.74 + rand() * 0.05, 0, (rand() - 0.5) * 0.4, 0)));
       }
       if (rand() < 0.35) plants.push(s.matrix.clone().multiply(mat(0.72, 0.74, 0.92, 0, rand() * 6, 0)));

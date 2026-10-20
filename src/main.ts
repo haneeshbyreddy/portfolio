@@ -1,7 +1,9 @@
 // the interface is set in SF Pro where the system has it, Inter (with optical sizes) elsewhere
 import '@fontsource-variable/inter/opsz.css';
-// the monitor programs draw their own type
+// the display grotesk, and the italic serif that every headline shifts one word into
 import '@fontsource-variable/inter-tight';
+import '@fontsource-variable/newsreader/opsz-italic.css';
+// the monitor programs draw their own type
 import '@fontsource-variable/geist-mono';
 import './ui/styles.css';
 import { Experience } from './core/Experience';
@@ -12,12 +14,13 @@ async function boot() {
 
   const gl = document.createElement('canvas').getContext('webgl2');
   if (!gl) {
-    host.innerHTML = `<div class="fallback"><div><h1>Fieldwork</h1><p>This experience needs WebGL 2.</p></div></div>`;
+    host.innerHTML = `<div class="fallback"><div><h1>Fieldwork.</h1><p>This floor needs WebGL 2</p></div></div>`;
     return;
   }
 
   // fonts are drawn into the monitor canvases, so wait for them
   const fonts = Promise.all([
+    document.fonts.load('italic 420 20px "Newsreader Variable"'),
     document.fonts.load('500 20px "Inter Tight Variable"'),
     document.fonts.load('650 20px "Inter Tight Variable"'),
     document.fonts.load('500 20px "Geist Mono Variable"'),

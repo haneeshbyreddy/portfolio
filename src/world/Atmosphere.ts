@@ -43,6 +43,7 @@ export function createAtmosphere(count = 420) {
       uWindDir: shared.uWindDir,
       uPixel: { value: 1 },
       uColor: { value: new Color('#fff6dd') },
+      uVeil: shared.uVeil,
     },
     vertexShader: /* glsl */ `
       attribute float aSeed;
@@ -69,12 +70,13 @@ export function createAtmosphere(count = 420) {
     `,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor;
+      uniform float uVeil;
       varying float vA;
       void main() {
         vec2 c = gl_PointCoord - 0.5;
         float d = length(c);
         float a = smoothstep(0.5, 0.0, d);
-        gl_FragColor = vec4(uColor * a * vA * 0.32, 1.0);
+        gl_FragColor = vec4(uColor * a * vA * 0.32 * (1.0 - uVeil), 1.0);
       }
     `,
   });

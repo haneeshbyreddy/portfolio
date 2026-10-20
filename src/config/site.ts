@@ -3,8 +3,11 @@ export const site = {
   name: 'Haneesh Byreddy',
   /** The product name in the top bar. */
   title: 'Fieldwork',
-  /** The hero over the establishing shot. A line under it counts the desks. */
-  headline: 'Every desk is a project.',
+  /**
+   * The hero over the establishing shot, spread across the sky. One word in
+   * each line is set in the italic serif: mark it *like this*.
+   */
+  headline: 'Every desk is a *project*.',
   discipline: 'Design + Engineering',
   since: '2019',
   email: 'hello@yourdomain.com',
@@ -13,6 +16,7 @@ export const site = {
     { label: 'LinkedIn', href: '#' },
     { label: 'GitHub', href: '#' },
   ],
-  about:
-    'An independent designer-engineer building brands, websites and products that feel considered down to the last pixel. This floor is the body of work — every desk a project, every empty one an invitation.',
+  /** The About page: a lead line, then the rest. */
+  about: 'An independent designer-engineer building brands, websites and products that feel considered down to the last *pixel*.',
+  aboutMore: 'This floor is the body of work: every desk a project, every empty one an invitation.',
 };

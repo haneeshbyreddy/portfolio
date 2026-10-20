@@ -3,6 +3,8 @@ import { clamp, damp, easeInOutCubic, lerp, smoothstep } from './math';
 import type { ShiftCamera } from './ShiftCamera';
 import type { Desk } from '../office/Office';
 import { floorBounds } from '../office/layout';
+import { PHONE_SHOT } from '../office/Phones';
+import type { Device } from '../data/projects';
 
 export interface Pose {
   pos: Vector3;
@@ -112,11 +114,14 @@ const _d = new Vector3();
  *  - intro: eye level in the tall grass, looking at the hills (refs 3 + 4)
  *  - overview: the floor, steered by the visitor (see `View`)
  *  - focus: over a worker's shoulder onto their monitor (ref 2), framed with
- *    a shift lens so the screen sits beside the project panel
+ *    a shift lens so the screen sits beside the project panel — or, when
+ *    they hold their phone up to show you, leaning in on that
  */
 export class CameraRig {
   mode: Mode = 'intro';
   focusDesk: Desk | null = null;
+  /** What the focus shot is about: the terminal, or the phone in the worker's hand. */
+  subject: Device = 'terminal';
 
   /** What's on screen, and where it's heading. Input moves `goal`; `view` follows. */
   private view: View = { ...HOME };
@@ -208,6 +213,7 @@ export class CameraRig {
   private focusPose(p: Pose, desk: Desk) {
     const tall = this.layout === 'tall';
     const occupied = desk.occupied;
+    if (this.subject === 'phone') return this.phonePose(p, desk, tall);
     // station space: chair at origin, +Z toward the monitor, +X = worker's left
     // an open desk is framed a step further back, so its sheet can be whisked off in shot
     const camLocal = occupied
@@ -232,6 +238,40 @@ export class CameraRig {
     p.fov = tall ? 44 : 31;
     p.shift.set(tall ? 0 : 0.3, tall ? 0.42 : 0.0);
     return p;
+  }
+
+  /** Leaning in over the left shoulder at the phone held up beside the head. */
+  private phonePose(p: Pose, desk: Desk, tall: boolean) {
+    const cam = _a.copy(PHONE_SHOT.cam);
+    const aim = _b.copy(PHONE_SHOT.aim);
+    // portrait: further back along the line the phone faces, so it fits above the sheet
+    if (tall) cam.sub(PHONE_SHOT.hold).multiplyScalar(1.45).add(PHONE_SHOT.hold);
+    p.pos.copy(cam).applyMatrix4(desk.matrix);
+    p.target.copy(aim).applyMatrix4(desk.matrix);
+    p.pos.x += this.parallax.x * 0.012;
+    p.pos.y += this.parallax.y * 0.008;
+    if (this.look.x || this.look.y) {
+      const dir = _d.subVectors(p.target, p.pos).applyAxisAngle(UP, this.look.x);
+      dir.applyAxisAngle(_r.crossVectors(dir, UP).normalize(), this.look.y);
+      p.target.copy(p.pos).add(dir);
+    }
+    p.fov = tall ? 40 : 30;
+    p.shift.set(tall ? 0 : 0.3, tall ? 0.46 : 0.0);
+    return p;
+  }
+
+  /** Move between the terminal and the phone without leaving the desk. */
+  frame(subject: Device) {
+    if (subject === this.subject) return;
+    this.subject = subject;
+    if (this.mode !== 'focus' || !this.focusDesk) return;
+    copyPose(this.from, this.current);
+    this.look.set(0, 0);
+    this.computeDesired();
+    this.tDur = this.reducedMotion ? 0.5 : 1.45;
+    this.lift = 0;
+    this.tStart = this.clock;
+    this.transitioning = true;
   }
 
   private computeDesired() {

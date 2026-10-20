@@ -1,5 +1,6 @@
-import { DataTexture, RGBAFormat, Texture, Vector2, Vector3, Vector4 } from 'three';
+import { Color, DataTexture, RGBAFormat, Texture, Vector2, Vector3, Vector4 } from 'three';
 import { lawnBounds } from '../office/layout';
+import { palette } from './palette';
 
 const lawn = lawnBounds();
 
@@ -19,6 +20,13 @@ export const shared = {
   uAOBounds: { value: new Vector4(-1, -1, 1, 1) },
   /** xz = cursor on the ground, y = strength (0..1). */
   uCursor: { value: new Vector3(0, 0, 0) },
+  /**
+   * How much of the floor the opening's fog still hides (0 once it has lifted).
+   * Materials that light themselves (screens, pollen) can't take scene fog, so
+   * they fade into it with this instead.
+   */
+  uVeil: { value: 0 },
+  uFogColor: { value: new Color(palette.fog) },
 };
 
 export const lawnGLSL = /* glsl */ `

@@ -4,10 +4,9 @@ Where the mock stands after the first build (commit `7419661`, 2026-10-19), and 
 
 ## Needs your input first
 
-- **Real projects.** All seven entries in `src/data/projects.ts` are invented placeholders.
+- **Project details.** The five real projects (Hyderabaddies, HansaNet, Ayuja, R-Bot, Printed Faces) are in `src/data/projects.ts`, written from the live sites and the Ayuja production notes. Check the roles, stacks, years (all 2026) and the three `facts` on each. The order on the floor is a guess: Hyderabaddies gets the best desk because it shows off the phone.
+- **HansaNet film.** Not made yet. When it exists, add a `film` entry to HansaNet's `media` with files in `public/work/hansanet/`, and its terminal changes channel between the site and the film.
 - **Identity.** In `src/config/site.ts`, the name ("Haneesh Byreddy") was guessed from your email handle, the email is `hello@yourdomain.com`, and the social links are `#`.
-- **Real previews.** Every monitor program is procedural. For real work, add a program that `drawImage`s your screenshots or video into the canvas (see README → "Using real work on the screens").
-- **Case-study numbers.** The stats in `statsFor()` in `src/ui/UI.ts` are placeholders for each discipline.
 
 ## Known rough edges
 
@@ -20,9 +19,18 @@ Where the mock stands after the first build (commit `7419661`, 2026-10-19), and 
 
 ## Not verified yet
 
+- Video on iOS Safari: the floor loops autoplay muted and inline, the full files are drawn into canvas textures, and the case study borrows the same `<video>`. Check that all of these play on a real iPhone, and that sound comes up when you open a case study.
+- Media weight: about 30 MB of video across the five projects, loaded per desk (floor loops ~2 MB up front). Watch the first visit to a desk on a slow connection; the title card shows until the footage arrives.
+
 - Frame rate on real hardware. I only measured about 3.9M triangles and about 150 draw calls per frame, and I tested in a throttled preview pane. Test on an integrated GPU laptop and on a phone. Quality tiers live in `src/core/quality.ts`; force one with `?q=low|medium|high`.
 - Procedural sound on Safari and iOS.
 - Bundle size is 911 KB (282 KB gzipped). Lazy-loading postprocessing and n8ao would shave the first load.
+
+## The new art direction (2026-10-20)
+
+- **Score.** You picked the fourth take of the ElevenLabs flow (four minutes, stereo). The site plays bars 8–86 of it (24.54 s to 237.27 s, 3 min 33 s) with a 0.3 s crossfade into the start, as AAC at 160 kbps (4.4 MB, streamed). Browsers may leave a hairline gap at the loop point once every three and a half minutes.
+- **Opening on real devices.** Check the cold open on a phone: the sentence beats, the fog colour matching the first rendered frame, and the lift's frame rate while the fog is dense.
+- **Newsreader.** The italic adds about 147 KB (latin). Subset it if the first load needs to be lighter.
 
 ## Ideas parked
 

@@ -1,17 +1,33 @@
 /**
- * Procedural soundscape — no audio files. Wind through tall grass (filtered
- * noise breathing with the gusts), a distant lark now and then, and the soft
- * clatter of keyboards that grows when you lean over a desk.
+ * The soundtrack. A score, and a procedural meadow under it: wind through tall
+ * grass (filtered noise breathing with the gusts), a distant lark now and then,
+ * and the soft clatter of keyboards that grows when you lean over a desk.
+ *
+ * The score is an original boom-bap instrumental, cut on bar lines so it comes
+ * round again without a seam. It streams through an <audio> element rather than
+ * being decoded whole: three and a half minutes of PCM is too much to hold on a
+ * phone. It is heard through the opening's fog, muffled, and opens up as the fog
+ * lifts; when a film or a reel speaks, it steps back.
  */
+const SCORE = '/audio/score.m4a';
+/** Its level under the meadow: present, never in the way. */
+const SCORE_LEVEL = 0.56;
+
 export class Ambience {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
   private windGain!: GainNode;
   private windFilter!: BiquadFilterNode;
   private keysGain!: GainNode;
+  private music!: GainNode;
+  private musicTone!: BiquadFilterNode;
+  private score: HTMLAudioElement | null = null;
   private timer = 0;
+  private sleep = 0;
   private on = false;
   private keyRate = 0.18;
+  private veil = 1;
+  private ducked = false;
 
   get enabled() {
     return this.on;
@@ -51,6 +67,66 @@ export class Ambience {
     this.keysGain = ctx.createGain();
     this.keysGain.gain.value = 0.25;
     this.keysGain.connect(this.master);
+
+    this.musicTone = ctx.createBiquadFilter();
+    this.musicTone.type = 'lowpass';
+    this.musicTone.Q.value = 0.5;
+    this.musicTone.frequency.value = this.toneFor(this.veil);
+    this.music = ctx.createGain();
+    this.music.gain.value = 0;
+    this.musicTone.connect(this.music).connect(this.master);
+
+    // nobody listens to a background tab
+    document.addEventListener('visibilitychange', () => {
+      if (!this.on) return;
+      if (document.hidden) {
+        this.score?.pause();
+        void ctx.suspend();
+      } else {
+        void ctx.resume();
+        this.playScore();
+      }
+    });
+  }
+
+  /** Called inside the click that turned sound on, so every browser lets it play. */
+  private playScore() {
+    const ctx = this.ctx!;
+    if (!this.score) {
+      const el = new Audio();
+      el.src = SCORE;
+      el.loop = true;
+      el.preload = 'auto';
+      ctx.createMediaElementSource(el).connect(this.musicTone);
+      this.score = el;
+    }
+    this.score.play().catch(() => {
+      /* no score: the meadow still has its wind */
+    });
+  }
+
+  /** In the fog the score is a room away; as it clears, the highs come back. */
+  private toneFor(veil: number) {
+    return 520 * Math.pow(18000 / 520, 1 - veil);
+  }
+
+  setVeil(veil: number) {
+    if (Math.abs(veil - this.veil) < 0.002) return;
+    this.veil = veil;
+    if (this.ctx) this.musicTone.frequency.setTargetAtTime(this.toneFor(veil), this.ctx.currentTime, 0.12);
+  }
+
+  /** Step back while something else on screen has the floor. */
+  duck(on: boolean) {
+    if (on === this.ducked) return;
+    this.ducked = on;
+    this.mix(on ? 0.35 : 1.6);
+  }
+
+  private mix(seconds: number) {
+    if (!this.ctx) return;
+    const level = !this.on ? 0 : this.ducked ? 0.06 : SCORE_LEVEL;
+    this.music.gain.setTargetAtTime(level, this.ctx.currentTime, seconds / 3);
   }
 
   setFocus(focused: boolean) {
@@ -61,11 +137,23 @@ export class Ambience {
   toggle() {
     if (!this.ctx) this.init();
     const ctx = this.ctx!;
-    if (ctx.state === 'suspended') void ctx.resume();
     this.on = !this.on;
+    clearTimeout(this.sleep);
+    if (this.on) {
+      if (ctx.state === 'suspended') void ctx.resume();
+      this.playScore();
+      this.loop();
+    } else {
+      cancelAnimationFrame(this.timer);
+      // let the fade finish, then stop the tape and the clock
+      this.sleep = window.setTimeout(() => {
+        if (this.on) return;
+        this.score?.pause();
+        void ctx.suspend();
+      }, 2400);
+    }
     this.master.gain.setTargetAtTime(this.on ? 0.55 : 0, ctx.currentTime, 0.6);
-    if (this.on) this.loop();
-    else cancelAnimationFrame(this.timer);
+    this.mix(1.2);
     return this.on;
   }
 

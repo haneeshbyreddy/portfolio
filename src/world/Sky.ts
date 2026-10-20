@@ -22,6 +22,8 @@ export function createSky(sunDir: Vector3) {
       uCloudLight: { value: col(palette.cloudLight) },
       uSunGlow: { value: col(palette.sunGlow) },
       uSunDir: { value: sunDir.clone().normalize() },
+      /** The opening's fog: 1 hides the sky in it. */
+      uVeil: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -34,6 +36,7 @@ export function createSky(sunDir: Vector3) {
     fragmentShader: /* glsl */ `
       uniform float uTime;
       uniform vec3 uZenith, uMid, uHorizon, uFog, uCloudDark, uCloudLight, uSunGlow, uSunDir;
+      uniform float uVeil;
       varying vec3 vDir;
       ${simplex2D}
       float fbm(vec2 p) {
@@ -72,6 +75,8 @@ export function createSky(sunDir: Vector3) {
         // horizon haze band — melts into fog below
         c = mix(c, uHorizon, exp(-hp * 16.0) * 0.75);
         c = mix(uFog, c, smoothstep(-0.04, 0.012, h));
+        // the opening: the dome clears last, from the horizon up
+        c = mix(c, uFog, clamp(uVeil * (1.6 - hp * 1.2), 0.0, 1.0));
 
         gl_FragColor = vec4(c, 1.0);
         #include <tonemapping_fragment>

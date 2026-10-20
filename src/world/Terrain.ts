@@ -88,6 +88,7 @@ export function createTerrain() {
       uLawn: shared.uLawn,
       uAO: shared.uAO,
       uAOBounds: shared.uAOBounds,
+      uVeil: shared.uVeil,
       uSunDir: { value: new Vector3(-0.45, 0.6, -0.65).normalize() },
       uSky: { value: col('#c6d0d2') },
       uGround: { value: col('#4b5a3b') },
@@ -123,6 +124,7 @@ export function createTerrain() {
       ${windField}
       ${lawnGLSL}
       #include <fog_pars_fragment>
+      uniform float uVeil;
 
       void main() {
         vec2 p = vWorld.xz;
@@ -170,7 +172,8 @@ export function createTerrain() {
         // aerial perspective: distant peaks keep a little more contrast near their tops
         #ifdef USE_FOG
           float fogFactor = 1.0 - exp(-fogDensity * vFogDepth);
-          fogFactor *= mix(1.0, 0.74, smoothstep(30.0, 380.0, hgt));
+          // peaks keep their silhouette through the haze, but not through the opening's fog
+          fogFactor *= mix(1.0, 0.74, smoothstep(30.0, 380.0, hgt) * (1.0 - uVeil));
           gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
         #endif
         #include <tonemapping_fragment>

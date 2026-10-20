@@ -16,9 +16,10 @@ import {
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { clamp, damp, hashString, mulberry32, smoothstep } from '../core/math';
+import { clamp, damp, hashString, lerp, mulberry32, smoothstep } from '../core/math';
 import type { Desk } from './Office';
 import { KEYBOARD, MOUSE, MUG } from './parts';
+import { PHONE_REST, PHONE_SHOT, type Phones } from './Phones';
 
 /* -------------------------------------------------------------------------- */
 /*  Wardrobe                                                                  */
@@ -143,7 +144,7 @@ function headphonesGeometry() {
 /*  Behaviour                                                                 */
 /* -------------------------------------------------------------------------- */
 
-type State = 'type' | 'mouse' | 'think' | 'stretch' | 'sip' | 'look' | 'swivel' | 'relax';
+type State = 'type' | 'mouse' | 'think' | 'stretch' | 'sip' | 'look' | 'swivel' | 'relax' | 'watch';
 
 const STATES: { s: State; w: number; d: [number, number] }[] = [
   { s: 'type', w: 6, d: [4, 10] },
@@ -154,6 +155,8 @@ const STATES: { s: State; w: number; d: [number, number] }[] = [
   { s: 'look', w: 1, d: [2, 3.5] },
   { s: 'swivel', w: 0.7, d: [3, 5] },
   { s: 'relax', w: 0.6, d: [4, 6] },
+  // only while a film is on (see `watching`)
+  { s: 'watch', w: 0, d: [6, 10] },
 ];
 
 interface Pose {
@@ -202,7 +205,38 @@ interface Worker {
   /** 0..1 — the visitor is hovering their desk; they glance over */
   notice: number;
   noticeTarget: number;
+  /** 0..1 along "pick up the phone and hold it up for the visitor"; runs back down to put it away. */
+  show: number;
+  showTarget: number;
+  /** A film is playing on their terminal: they lean back and watch. */
+  watching: boolean;
 }
+
+/**
+ * Showing the phone, in station space. The hand grips it in its stand, then
+ * holds it up beside the head, screen turned to the camera over the shoulder.
+ */
+const SHOW = (() => {
+  const hold = PHONE_SHOT.hold.clone();
+  const z = PHONE_SHOT.cam.clone().sub(hold).normalize();
+  const x = new Vector3().crossVectors(new Vector3(0, 1, 0), z).normalize();
+  const y = new Vector3().crossVectors(z, x);
+  const holdQ = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(x, y, z));
+  // a hand isn't a tripod: the phone leans a little in it
+  holdQ.multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), -0.07));
+  const wristHold = hold.clone().addScaledVector(z, -0.024).addScaledVector(y, -0.074);
+  const wristGrab = PHONE_REST.center.clone().add(new Vector3(-0.012, -0.05, -0.055));
+  return {
+    holdQ,
+    wristHold,
+    wristGrab,
+    /** Phone centre relative to the wrist, gripping in the stand and holding up. */
+    offGrab: PHONE_REST.center.clone().sub(wristGrab),
+    offHold: hold.clone().sub(wristHold),
+  };
+})();
+const SHOW_UP = 1.5;
+const SHOW_DOWN = 1.15;
 
 type PartName =
   | 'head' | 'ear' | 'neck' | 'torso' | 'collar' | 'tie' | 'pelvis'
@@ -224,6 +258,8 @@ const ZERO = new Matrix4().makeScale(0, 0, 0);
 
 export class Workers {
   readonly workers: Worker[] = [];
+  /** Handsets the workers pick up; placed from their hands every frame. */
+  phones: Phones | null = null;
   private parts = new Map<PartName, InstancedMesh>();
   private readonly skinMat = new MeshStandardMaterial({ roughness: 0.62, metalness: 0 });
   private readonly clothMat = new MeshStandardMaterial({ roughness: 0.88, metalness: 0 });
@@ -253,6 +289,9 @@ export class Workers {
         focused: 0,
         notice: 0,
         noticeTarget: 0,
+        show: 0,
+        showTarget: 0,
+        watching: false,
       };
       if (i % 3 === 1) w.state = 'mouse';
       this.workers.push(w);
@@ -326,6 +365,22 @@ export class Workers {
     for (const w of this.workers) w.focused = w.desk === desk ? 1 : 0;
   }
 
+  /** The worker at `desk` holds their phone up for the visitor (or puts it back). */
+  setShowing(desk: Desk | null, on: boolean) {
+    for (const w of this.workers) if (w.desk === desk) w.showTarget = on ? 1 : 0;
+  }
+
+  /** A film is on at `desk`: its worker sits back to watch. */
+  setWatching(desk: Desk | null, on: boolean) {
+    for (const w of this.workers) {
+      if (w.desk !== desk || w.watching === on) continue;
+      w.watching = on;
+      w.state = on ? 'watch' : 'type';
+      w.stateTime = 0;
+      w.stateDur = on ? 7 + w.rand() * 4 : 4 + w.rand() * 4;
+    }
+  }
+
   private eye = new Vector3();
 
   update(dt: number, time: number, cameraPos?: Vector3) {
@@ -356,6 +411,13 @@ export class Workers {
     if (next.s === 'sip' && !w.desk.hasMug) next = STATES[0];
     // when the camera is over their shoulder, keep them mostly working
     if (w.focused && !['type', 'mouse', 'sip', 'think'].includes(next.s)) next = STATES[0];
+    // a film on: sit back, the odd sip, the odd thought
+    if (w.watching) {
+      const r = w.rand();
+      next = STATES.find((x) => x.s === (r < 0.62 || (r < 0.8 && !w.desk.hasMug) ? 'watch' : r < 0.8 ? 'sip' : 'think'))!;
+    }
+    // holding the phone up: the rest of the body keeps still
+    if (w.showTarget || w.show > 0) next = STATES[0];
     w.state = next.s;
     w.stateTime = 0;
     w.stateDur = next.d[0] + w.rand() * (next.d[1] - next.d[0]);
@@ -470,6 +532,18 @@ export class Workers {
         lambda = 4;
         break;
       }
+      case 'watch': {
+        // sat back, hands in the lap, eyes on the tube
+        T.lean = -0.1;
+        T.rollBack = -0.05;
+        T.headPitch = 0.08 + Math.sin(k * 0.19) * 0.02;
+        T.headYaw = Math.sin(k * 0.13) * 0.04;
+        T.swivel = Math.sin(k * 0.09) * 0.05;
+        T.handL.set(0.085, 0.655, 0.27);
+        T.handR.set(-0.065, 0.65, 0.29);
+        lambda = 3.5;
+        break;
+      }
       case 'swivel': {
         const l = smoothstep(0, 0.15, u) * (1 - smoothstep(0.85, 1, u));
         T.swivel = Math.sin(t * 1.25) * 0.26 * l;
@@ -485,6 +559,28 @@ export class Workers {
       }
     }
     if (w.state !== 'sip') w.mugAttached = false;
+
+    // showing the phone: reach into the stand, then hold it up beside the head
+    const up = w.showTarget > w.show;
+    w.show = clamp(w.show + (up ? dt / SHOW_UP : -dt / SHOW_DOWN) * (w.show === w.showTarget ? 0 : 1));
+    if (w.show > 0) {
+      const sh = w.show;
+      const reach = smoothstep(0.0, 0.3, sh);
+      const lift = smoothstep(0.32, 1.0, sh);
+      T.handL.lerp(SHOW.wristGrab, reach).lerp(SHOW.wristHold, lift);
+      _v.set(-0.12, 0.775, 0.33);
+      T.handR.lerp(_v, reach);
+      T.lean = lerp(T.lean, 0.32, reach * (1 - lift));
+      T.lean = lerp(T.lean, 0.02, lift);
+      T.twist = lerp(T.twist, 0.14, lift);
+      T.headYaw = lerp(T.headYaw, 0.42, lift);
+      T.headPitch = lerp(T.headPitch, 0.04, lift);
+      T.headRoll = lerp(T.headRoll, 0.06, lift);
+      T.swivel = lerp(T.swivel, 0.06, lift);
+      T.rollBack = 0;
+      T.flare = lerp(T.flare, 0.2, lift);
+      lambda = 8;
+    }
 
     // noticing the visitor: turn toward the camera, hold a beat
     w.notice = damp(w.notice, w.noticeTarget, 3.5, dt);
@@ -628,6 +724,17 @@ export class Workers {
       _q.setFromAxisAngle(UP, P.swivel + (crossed ? -0.25 * side : 0));
       _m2.compose(_v2.copy(ankle).add(_v3.set(0, -0.06, 0.06)), _q, _s.set(1, 1, 1));
       set('shoe', idx, _m2);
+    }
+
+    // the phone: in its stand, or in the left hand
+    if (this.phones?.get(desk)) {
+      const sh = w.show;
+      const grip = smoothstep(0.26, 0.34, sh);
+      const lift = smoothstep(0.32, 1.0, sh);
+      _v2.copy(SHOW.offGrab).lerp(SHOW.offHold, lift).add(w.wristL);
+      _v2.lerpVectors(PHONE_REST.center, _v2, grip);
+      _q.copy(PHONE_REST.quat).slerp(SHOW.holdQ, lift);
+      this.phones.place(desk, _m2.compose(_v2, _q, _s.set(1, 1, 1)).premultiply(S));
     }
 
     // mug in hand

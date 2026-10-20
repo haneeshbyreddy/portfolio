@@ -4,7 +4,7 @@ import { Matrix4, Vector3 } from 'three';
  * The floor plan: one even grid of single desks, every one facing away from
  * the establishing shot so each screen glows back at the camera over its
  * worker's shoulder. No partitions — just furniture on the lawn, and far more
- * desks than people.
+ * desks than people. The people sit in a line along the front.
  *
  * Change the grid here and the field, lawn, shadows and slots all follow.
  */
@@ -22,31 +22,32 @@ export const GRID = {
 /** Desk + chair footprint in station space (x0, z0, x1, z1). */
 export const FOOTPRINT = { x0: -0.66, z0: -0.5, x1: 0.92, z1: 1.08 };
 
-/**
- * Which desk gets the next project, as [row, col] with row 0 nearest the
- * camera. The first seven take one desk per column, so from the overview no
- * worker hides behind another; later hires fill in front to back.
- */
-const HIRING: [number, number][] = [
-  [0, 2], [1, 4], [0, 6], [1, 0], [2, 3], [3, 1], [3, 5],
-  [0, 4], [1, 2], [2, 5], [2, 1], [0, 0], [1, 6], [3, 3],
-];
-
 const deskIndex = (row: number, col: number) => row * GRID.cols + col;
 
-/** Desk indices in hiring order, covering every desk on the floor. */
-export const FILL_ORDER: number[] = (() => {
-  const order = HIRING.map(([r, c]) => deskIndex(r, c));
+/**
+ * Desk indices in hiring order, covering every desk on the floor, for `hired`
+ * projects. The projects line up side by side along the front row, centred,
+ * in roster order from left to right as the establishing shot sees them; a
+ * full row carries on, centred again, one row back. The empty desks follow,
+ * row by row from the front, middle first.
+ */
+export function fillOrder(hired: number): number[] {
+  const lined: number[] = [];
+  for (let r = 0; r < GRID.rows && lined.length < hired; r++) {
+    const n = Math.min(GRID.cols, hired - lined.length);
+    const start = Math.floor((GRID.cols - n) / 2);
+    for (let c = start; c < start + n; c++) lined.push(deskIndex(r, c));
+  }
   const mid = (GRID.cols - 1) / 2;
   const rest: number[] = [];
   for (let r = 0; r < GRID.rows; r++) {
     const row: number[] = [];
-    for (let c = 0; c < GRID.cols; c++) if (!order.includes(deskIndex(r, c))) row.push(c);
+    for (let c = 0; c < GRID.cols; c++) if (!lined.includes(deskIndex(r, c))) row.push(c);
     row.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid));
     rest.push(...row.map((c) => deskIndex(r, c)));
   }
-  return [...order, ...rest];
-})();
+  return [...lined, ...rest];
+}
 
 export interface Station {
   /** Global desk number, 1-based, as shown in the UI (front-left first). */
