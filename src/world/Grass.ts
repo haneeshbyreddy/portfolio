@@ -13,7 +13,7 @@ import {
 } from 'three';
 import { createNoise2D, mulberry32, smoothstep } from '../core/math';
 import { simplex2D, windField } from '../core/glsl';
-import { lawnGLSL, shared } from './shared';
+import { cloudGLSL, lawnGLSL, shared } from './shared';
 import { col, palette } from './palette';
 import { MEADOW_CENTER, terrainHeight } from './Terrain';
 import { lawnBounds } from '../office/layout';
@@ -57,9 +57,11 @@ const vertexShader = /* glsl */ `
   varying float vAO;
   varying float vSide;
   varying vec2 vXZ;
+  varying float vCloud;
   ${simplex2D}
   ${windField}
   ${lawnGLSL}
+  ${cloudGLSL}
   #include <fog_pars_vertex>
 
   void main() {
@@ -100,6 +102,7 @@ const vertexShader = /* glsl */ `
     vSeed = aParams.w;
     vGust = gust;
     vAO = sampleAO(base);
+    vCloud = cloudShade(base);
     vSide = position.x;
     vXZ = base;
 
@@ -118,6 +121,7 @@ const fragmentShader = /* glsl */ `
   varying float vAO;
   varying float vSide;
   varying vec2 vXZ;
+  varying float vCloud;
   ${lawnGLSL}
   #include <fog_pars_fragment>
 
@@ -127,7 +131,9 @@ const fragmentShader = /* glsl */ `
     vec3 col;
     if (uLawnMode > 0.5) {
       vec3 lawn = mix(uLawnB, uLawnA, stripe(vXZ));
-      col = mix(uRoot, lawn * (0.9 + vSeed * 0.2), smoothstep(0.0, 0.7, vT));
+      // mown turf is too dense to show its roots: shade toward the lawn, not the soil,
+      // so the floor reads as velvet rather than speckle from the establishing shot
+      col = mix(mix(uRoot, lawn, 0.55), lawn * (0.9 + vSeed * 0.2), smoothstep(0.0, 0.7, vT));
     } else {
       col = mix(uRoot, uMid, smoothstep(0.0, 0.55, vT));
       col = mix(col, tip, smoothstep(0.45, 1.0, vT));
@@ -140,6 +146,7 @@ const fragmentShader = /* glsl */ `
     // overcast light
     col *= 1.04;
     col *= mix(0.5, 1.0, vAO);
+    col *= vCloud;
 
     gl_FragColor = vec4(col, 1.0);
     #include <fog_fragment>
@@ -160,6 +167,7 @@ function makeMaterial(lawnMode: boolean) {
       uAO: shared.uAO,
       uAOBounds: shared.uAOBounds,
       uCursor: shared.uCursor,
+      uCloud: shared.uCloud,
       uLawnMode: { value: lawnMode ? 1 : 0 },
       uRoot: { value: col(palette.grassRoot) },
       uMid: { value: col(palette.grassMid) },

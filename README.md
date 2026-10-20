@@ -66,7 +66,7 @@ Add `?q=low`, `?q=medium` or `?q=high` to the URL to force a quality tier.
 ## Add a project
 
 Edit `src/data/projects.ts`. Each entry hires one person. The projects sit side by side
-along the front row, centred, in list order from left to right; past seven they carry
+along the front row, centred, in list order from left to right; past five they carry
 on one row back (`fillOrder` in `src/office/layout.ts`).
 
 | Field        | What it drives                                                   |
@@ -103,8 +103,8 @@ ffmpeg -i film.mov -vf scale=1280:720 -c:v libx264 -crf 27 -preset slow -c:a aac
 ffmpeg -i film.mov -vf scale=384:216,fps=12 -c:v libx264 -crf 31 -an -movflags +faststart film-floor.mp4
 ```
 
-Need more desks? Change `GRID` in `src/office/layout.ts`. The lawn, contact shadows and
-hit areas follow.
+Need more desks? Change `GRID` in `src/office/layout.ts`. The lawn, its mowing stripes,
+contact shadows, hit areas and the establishing shot's framing follow.
 
 ## Personalise
 

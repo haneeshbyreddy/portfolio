@@ -11,7 +11,9 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D, mulberry32, smoothstep } from '../core/math';
+import { simplex2D, windField } from '../core/glsl';
 import { MEADOW_CENTER, MEADOW_FLAT_RADIUS, terrainHeight } from './Terrain';
+import { cloudGLSL, lawnGLSL, shared } from './shared';
 
 const noise = createNoise2D(77);
 
@@ -102,6 +104,36 @@ function conifer(seed: number) {
 export function createTrees(count: number) {
   const rand = mulberry32(9001);
   const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
+  // the forest takes the same drifting cloud shadows as the ground it stands on
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, {
+      uTime: shared.uTime,
+      uWindDir: shared.uWindDir,
+      uLawn: shared.uLawn,
+      uAO: shared.uAO,
+      uAOBounds: shared.uAOBounds,
+      uCloud: shared.uCloud,
+    });
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        ${simplex2D}
+        ${windField}
+        ${lawnGLSL}
+        ${cloudGLSL}
+        varying float vCloud;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec4 cloudAt = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          cloudAt = instanceMatrix * cloudAt;
+        #endif
+        vCloud = cloudShade((modelMatrix * cloudAt).xz);`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying float vCloud;`)
+      .replace('#include <opaque_fragment>', `#include <opaque_fragment>
+        gl_FragColor.rgb *= vCloud;`);
+  };
+  material.customProgramCacheKey = () => 'trees-cloud';
 
   const variants = [
     { geo: deciduous(3), share: 0.62 },

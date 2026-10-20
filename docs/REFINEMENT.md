@@ -13,9 +13,9 @@ Where the mock stands after the first build (commit `7419661`, 2026-10-19), and 
 - **Trees.** Up close, the forest edge still reads as rounded "lollipop" canopies. Options: more varied canopy shapes, billboard impostors, or a denser, darker edge.
 - **Figures up close.** The short hairstyle looks like a bowl cut from behind, and the hands are blocky mittens. The heads are faceless on purpose.
 - **Lawn.** At the over-shoulder distance, the mown blades look like sparse tufts. Raise the density around the desks, or make the blades finer.
-- **Establishing shot.** The sky band is narrow and the far mountains are faint. Tune the overview framing in `framingFor()` in `CameraRig.ts` (`far`, `elFar`, `yFar`), the fog density in `World.ts`, or the mountain height in `Terrain.ts`.
+- **Establishing shot.** Any frontal shot that keeps the treeline in frame leaves a band of meadow between the headline and the back row; the cloud shade (`cloudGLSL` in `src/world/shared.ts`) darkens it so it recedes. Tune the framing in `framingFor()` in `CameraRig.ts` (lens, `elFar`, `yFar`, and how much of the front row fills the width), or the light with `shared.uCloud`.
 - **Vacant desk power-down.** The single hi-res canvas is shared, so when you leave an empty desk its screen briefly shows the next desk's content during the 0.35s power-off.
-- **Mobile.** In portrait, the floor is a narrow band across the middle of a tall frame, the outer columns are half cropped (drag or pinch to reach them), and the focus sheet is tall.
+- **Mobile.** In portrait the establishing shot rises to a plan view so all five working desks stay in frame. They're small at phone width (a desk is about 50 pt), so pinch to get closer. The focus sheet is tall.
 
 ## Not verified yet
 
@@ -37,3 +37,10 @@ Where the mock stands after the first build (commit `7419661`, 2026-10-19), and 
 - Each new project gets a "new hire" moment: a figure walks across the lawn to its desk.
 - Small name plaques on the desks.
 - Weather or time-of-day variants for the sky.
+
+## The 5 × 4 floor (2026-10-20)
+
+- **Grid.** 5 columns × 4 rows at 2.55 m × 3.0 m, down from 7 × 4 at 2.9 × 3.3. The five projects fill the front row; fifteen sheeted desks stand behind.
+- **Shot.** A frontal tableau (Tati's *Playtime*, Gursky's rows, the Severance one-sheet). On wide screens it's a standing view from the edge of the floor on a ~35 mm lens (37° vertical), with the front row filling about 85% of the width. The distance comes from fitting both the width and the bottom edge, so 16:9 and ultrawide don't crop the chairs. On a phone, the shot rises to a plan view (about 43°, 40° lens).
+- **Light.** The meadow and hills lie under a thin cloud deck, with heavier patches drifting through on the wind. The office stands in a break, so the floor is the brightest thing in frame (`cloudGLSL`, also patched into the tree material).
+- **Lawn.** Mown to the floor plan: darker turf under each column and a light stripe down every aisle (`stripe()` in `shared.ts` reads `GRID`). Blade roots shade toward the turf instead of the soil, so the lawn reads as velvet rather than speckle.

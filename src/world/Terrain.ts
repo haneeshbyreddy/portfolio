@@ -9,7 +9,7 @@ import {
 } from 'three';
 import { createNoise2D, fbm2, lerp, smoothstep } from '../core/math';
 import { simplex2D, windField } from '../core/glsl';
-import { lawnGLSL, shared } from './shared';
+import { cloudGLSL, lawnGLSL, shared } from './shared';
 import { col, palette } from './palette';
 
 const n1 = createNoise2D(11);
@@ -89,6 +89,7 @@ export function createTerrain() {
       uAO: shared.uAO,
       uAOBounds: shared.uAOBounds,
       uVeil: shared.uVeil,
+      uCloud: shared.uCloud,
       uSunDir: { value: new Vector3(-0.45, 0.6, -0.65).normalize() },
       uSky: { value: col('#c6d0d2') },
       uGround: { value: col('#4b5a3b') },
@@ -123,6 +124,7 @@ export function createTerrain() {
       ${simplex2D}
       ${windField}
       ${lawnGLSL}
+      ${cloudGLSL}
       #include <fog_pars_fragment>
       uniform float uVeil;
 
@@ -166,6 +168,7 @@ export function createTerrain() {
         light += vec3(1.0, 0.96, 0.9) * max(dot(n, uSunDir), 0.0) * 0.35;
         col *= light;
         col *= mix(0.55, 1.0, sampleAO(p));
+        col *= cloudShade(p);
 
         gl_FragColor = vec4(col, 1.0);
 

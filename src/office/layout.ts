@@ -9,11 +9,11 @@ import { Matrix4, Vector3 } from 'three';
  * Change the grid here and the field, lawn, shadows and slots all follow.
  */
 export const GRID = {
-  cols: 7,
+  cols: 5,
   rows: 4,
   /** Desk-to-desk pitch across a row (x) and between rows (z), in metres. */
-  pitchX: 2.9,
-  pitchZ: 3.3,
+  pitchX: 2.55,
+  pitchZ: 3.0,
   /** Floor centre on the ground. */
   x: 0,
   z: -0.9,
