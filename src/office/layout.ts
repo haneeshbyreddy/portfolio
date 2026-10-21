@@ -96,6 +96,11 @@ export function buildStations(): Station[] {
   return stations;
 }
 
+/** Ground x of the stations in column `col`: where each of its workers sits. */
+export function columnX(col: number) {
+  return cellCenter(0, col).x + (FOOTPRINT.x0 + FOOTPRINT.x1) / 2;
+}
+
 /** Axis-aligned bounds of the furnished floor (x0, z0, x1, z1), no margin. */
 export function floorBounds() {
   const hx = (FOOTPRINT.x1 - FOOTPRINT.x0) / 2;

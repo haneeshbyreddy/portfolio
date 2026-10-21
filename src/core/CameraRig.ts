@@ -2,7 +2,7 @@ import { Vector2, Vector3 } from 'three';
 import { clamp, damp, easeInOutCubic, lerp, smoothstep } from './math';
 import type { ShiftCamera } from './ShiftCamera';
 import type { Desk } from '../office/Office';
-import { floorBounds } from '../office/layout';
+import { GRID, columnX, floorBounds } from '../office/layout';
 import { PHONE_SHOT } from '../office/Phones';
 import type { Device } from '../data/projects';
 
@@ -54,6 +54,11 @@ interface Framing {
   /** Where the pivot sits on screen, in NDC y. */
   yFar: number;
   yNear: number;
+  /**
+   * The stretch of the front row the establishing shot slides along on a
+   * screen too narrow to hold it all. On a wide screen it's a single point.
+   */
+  track: { x0: number; x1: number };
 }
 
 const FLOOR = floorBounds();
@@ -64,12 +69,26 @@ const HOME: View = { x: MID.x, z: MID.z, zoom: 0, az: 0, tilt: 0 };
 /** The pivot rides at desk height; zoom anchors a little higher, on desktops and screens. */
 const PIVOT_Y = 0.55;
 const ANCHOR_Y = 0.8;
+/** Where each column's workers sit: the stops along the track. */
+const COLUMNS = Array.from({ length: GRID.cols }, (_, c) => columnX(c));
 /**
  * How far the pivot may wander from the middle of the floor when fully zoomed
- * in. At the establishing shot it can't: a drag there only stretches, and
- * springs back to the composed frame.
+ * in. At the establishing shot it can only slide along the track: elsewhere a
+ * drag there only stretches, and springs back to the composed frame.
  */
 const ROAM = { x: HALF.x - 0.5, z: HALF.z - 0.6 };
+/** Below this zoom the overview counts as the establishing shot, and rides the track. */
+const TRACK_ZOOM = 0.06;
+/** How quickly a released glide dies away (1/s). */
+const GLIDE = 4.2;
+/** Stiffness of the spring that settles the track on a desk (rad/s). */
+const SNAP = 8;
+/**
+ * Half the frame's height at the pivot (m) once a screen is too narrow to
+ * hold the front row: from there the shot stops backing away and crops its
+ * sides instead.
+ */
+const HOLD = 7.8;
 const AZ_MAX = 0.62;
 const TILT = { min: -0.08, max: 0.5 };
 /** How far each axis gives past its limit before it stops. */
@@ -100,30 +119,37 @@ function frontEdgeY(d: number, fov: number, el: number, y: number) {
  * symmetrical, everything sharp. On a wide screen it's a standing view from
  * the edge of the floor on a ~35 mm lens, close enough that the front row of
  * five reads as people at work and the empty rows recede behind them, with
- * the treeline still in frame. A phone can't hold five desks across at that
- * size, so it rises to a plan view and the grid itself becomes the picture.
+ * the treeline still in frame. A phone keeps the same shot at the same
+ * height and crops its sides: the hills over the headline, one worker in the
+ * middle with their neighbours cut by the frame, and the rest of the row a
+ * drag away along the track.
  */
 function framingFor(aspect: number): Framing {
   // 0 = phone portrait, 1 = landscape
   const w = smoothstep(0.7, 1.3, aspect);
-  const fov = lerp(40, 37, w);
+  const fov = lerp(46, 37, w);
   const tan = Math.tan((fov * Math.PI) / 360);
-  const elFar = lerp(0.75, 0.31, w);
-  const yFar = lerp(-0.3, -0.32, w);
-  // back far enough that the front row (nearer than the pivot) fits across…
-  const halfWidth = lerp(HALF.x - 0.2, HALF.x + 0.9, w);
-  let far = halfWidth / (tan * aspect) + HALF.z - 0.3;
+  const elFar = lerp(0.27, 0.31, w);
+  const yFar = lerp(-0.44, -0.32, w);
+  // back far enough that the front row (nearer than the pivot) fits across,
+  // unless the screen is so narrow that would shrink the desks: then hold
+  // the frame's height and let the sides go…
+  const row = HALF.x + 0.9;
+  let far = Math.min(row / (tan * aspect) + HALF.z - 0.3, HOLD / tan);
   // …and its chairs clear the bottom of the frame
-  const bottom = lerp(-0.75, -0.8, w);
+  const bottom = -0.8;
   while (frontEdgeY(far, fov, elFar, yFar) < bottom && far < 80) far *= 1.01;
+  // once a whole desk's width is cropped, every desk can be slid to the middle
+  const crop = clamp((row - (far - HALF.z + 0.3) * tan * aspect) / GRID.pitchX);
   return {
     fov,
     far,
-    near: lerp(9, 7.5, w),
+    near: lerp(8, 7.5, w),
     elFar,
     elNear: lerp(0.6, 0.4, w),
     yFar,
     yNear: lerp(0.02, -0.04, w),
+    track: { x0: lerp(HOME.x, COLUMNS[0], crop), x1: lerp(HOME.x, COLUMNS[COLUMNS.length - 1], crop) },
   };
 }
 
@@ -164,6 +190,8 @@ export class CameraRig {
   private spin = new Vector2();
   /** Clock time of the last wheel or key step; stretched limits hold until it goes quiet. */
   private stepped = -1;
+  /** Where the track is settling once let go, and how fast it's moving there. */
+  private settle: { x: number; v: number } | null = null;
   private tween: { from: View; to: View; t0: number; dur: number } | null = null;
   /** The world point a wheel gesture zooms toward, held for the whole gesture. */
   private anchor = { point: new Vector3(), weight: 0, t: -1 };
@@ -310,6 +338,10 @@ export class CameraRig {
     const hop = this.mode === 'focus' && mode === 'focus';
     copyPose(this.from, this.current);
     this.mode = mode;
+    // stepping back from a desk on a narrow screen, you come out in front of it
+    if (mode === 'overview' && this.focusDesk && this.onTrack(this.view)) {
+      this.view.x = this.stop(this.focusDesk.position.x);
+    }
     this.focusDesk = desk;
     this.endManipulation();
     this.look.set(0, 0);
@@ -361,13 +393,36 @@ export class CameraRig {
   private roam(zoom: number) {
     const f = this.framing;
     const open = (1 - Math.pow(f.near / f.far, clamp(zoom))) / (1 - f.near / f.far);
-    // fully open, any desk can be brought to the middle, and no further
-    const rx = ROAM.x * open, rz = ROAM.z * open;
-    return { x0: MID.x - rx, x1: MID.x + rx, z0: MID.z - rz, z1: MID.z + rz };
+    // shut, only the track; fully open, any desk can be brought to the middle, and no further
+    const rz = ROAM.z * open;
+    return {
+      x0: lerp(f.track.x0, MID.x - ROAM.x, open),
+      x1: lerp(f.track.x1, MID.x + ROAM.x, open),
+      z0: MID.z - rz,
+      z1: MID.z + rz,
+    };
+  }
+
+  /** True when a view is at the establishing shot on a screen with a track to slide along. */
+  private onTrack(v: View) {
+    const t = this.framing.track;
+    return t.x1 > t.x0 && v.zoom < TRACK_ZOOM;
+  }
+
+  /** The stop on the track nearest `x`: a desk in the middle of the frame, or an end of the track. */
+  private stop(x: number) {
+    const t = this.framing.track;
+    let best = t.x0;
+    for (const c of COLUMNS) {
+      const s = clamp(c, t.x0, t.x1);
+      if (Math.abs(s - x) < Math.abs(best - x)) best = s;
+    }
+    return best;
   }
 
   private stopMomentum() {
     this.tween = null;
+    this.settle = null;
     this.vel.set(0, 0);
     this.spin.set(0, 0);
   }
@@ -575,6 +630,8 @@ export class CameraRig {
     const r = this.roam(g.zoom);
     g.x += mx * give(g.x, r.x0, r.x1, STRETCH.pan * 0.25, mx);
     g.z += mz * give(g.z, r.z0, r.z1, STRETCH.pan * 0.25, mz);
+    // held keys fly freely along the track; it settles once they let go
+    this.stepped = this.clock;
     if (turn) this.turn(turn * 1.1 * dt, 0);
   }
 
@@ -592,11 +649,15 @@ export class CameraRig {
     this.tween = { from: { ...v }, to: { ...HOME }, t0: this.clock, dur: this.reducedMotion ? 0.4 : clamp(0.9 + far * 0.5, 0.9, 1.8) };
   }
 
-  /** True when the overview is (about) at the establishing shot. */
+  /** True when the overview is (about) at the establishing shot, anywhere along its track. */
   isHome() {
     const g = this.tween ? this.tween.to : this.goal;
+    const t = this.framing.track;
+    // pulled past either end of the track, it's still the same shot
+    const slack = t.x1 > t.x0 ? STRETCH.pan : 0.3;
     return (
-      Math.abs(g.x - HOME.x) < 0.3 &&
+      g.x > t.x0 - slack &&
+      g.x < t.x1 + slack &&
       Math.abs(g.z - HOME.z) < 0.3 &&
       g.zoom < 0.04 &&
       Math.abs(g.az) < 0.04 &&
@@ -638,14 +699,32 @@ export class CameraRig {
       return;
     }
 
-    // momentum
+    // on the track a fling pages along the row: it picks the desk a free glide
+    // would reach, but goes no more than about one desk past where it was let go.
+    // A critically damped spring then carries the floor there from the hand's speed
     const r = this.roam(g.zoom);
+    const tracking = this.onTrack(g) && !this.grabbing && !this.pinching && now - this.stepped > 0.18;
+    if (tracking) {
+      if (!this.settle) {
+        const reach = GRID.pitchX * 0.75;
+        const v = clamp(this.vel.x, -SNAP * reach, SNAP * reach);
+        this.settle = { x: this.stop(g.x + clamp(v / GLIDE, -reach, reach)), v };
+        this.vel.x = 0;
+      }
+      const s = this.settle;
+      s.v += (SNAP * SNAP * (s.x - g.x) - 2 * SNAP * s.v) * dt;
+      g.x += s.v * dt;
+    } else {
+      this.settle = null;
+    }
+
+    // momentum
     if (!this.grabbing && (this.vel.x || this.vel.y)) {
       g.x += this.vel.x * dt;
       g.z += this.vel.y * dt;
       // a glide that runs past the edge is caught quickly, then springs back
       const outside = g.x < r.x0 || g.x > r.x1 || g.z < r.z0 || g.z > r.z1;
-      this.vel.multiplyScalar(Math.exp(-(outside ? 16 : 4.2) * dt));
+      this.vel.multiplyScalar(Math.exp(-(outside ? 16 : GLIDE) * dt));
       if (this.vel.lengthSq() < 1e-4) this.vel.set(0, 0);
     }
     if (!this.turning && (this.spin.x || this.spin.y)) {
@@ -659,7 +738,7 @@ export class CameraRig {
     // settle anything left stretched past its limits
     const k = 9;
     if (!this.grabbing) {
-      g.x = damp(g.x, clamp(g.x, r.x0, r.x1), k, dt);
+      if (!tracking) g.x = damp(g.x, clamp(g.x, r.x0, r.x1), k, dt);
       g.z = damp(g.z, clamp(g.z, r.z0, r.z1), k, dt);
     }
     if (now - this.stepped > 0.18 && !this.pinching) g.zoom = damp(g.zoom, clamp(g.zoom), k, dt);
