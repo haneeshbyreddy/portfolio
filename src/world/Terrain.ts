@@ -9,7 +9,7 @@ import {
 } from 'three';
 import { createNoise2D, fbm2, lerp, smoothstep } from '../core/math';
 import { simplex2D, windField } from '../core/glsl';
-import { cloudGLSL, lawnGLSL, shared } from './shared';
+import { campGLSL, cloudGLSL, lawnGLSL, shared } from './shared';
 import { col, palette } from './palette';
 
 const n1 = createNoise2D(11);
@@ -85,21 +85,21 @@ export function createTerrain() {
       ...UniformsUtils.clone(UniformsLib.fog),
       uTime: shared.uTime,
       uWindDir: shared.uWindDir,
-      uLawn: shared.uLawn,
-      uAO: shared.uAO,
-      uAOBounds: shared.uAOBounds,
+      uCamp: shared.uCamp,
+      uGround: shared.uGround,
+      uGroundBounds: shared.uGroundBounds,
       uVeil: shared.uVeil,
       uCloud: shared.uCloud,
       uSunDir: { value: new Vector3(-0.45, 0.6, -0.65).normalize() },
       uSky: { value: col('#c6d0d2') },
-      uGround: { value: col('#4b5a3b') },
+      uGroundLight: { value: col('#4b5a3b') },
       uRoot: { value: col(palette.grassRoot) },
       uMid: { value: col(palette.grassMid) },
       uTip: { value: col(palette.grassTip) },
       uDry: { value: col(palette.grassDry) },
       uSheen: { value: col(palette.grassSheen) },
-      uLawnA: { value: col(palette.lawnA) },
-      uLawnB: { value: col(palette.lawnB) },
+      uTrod: { value: col(palette.grassTrod) },
+      uLawn: { value: col(palette.lawnDeep) },
       uForest: { value: col(palette.forest) },
       uForestLight: { value: col(palette.forestLight) },
       uFar: { value: col(palette.hillFar) },
@@ -118,13 +118,14 @@ export function createTerrain() {
       }
     `,
     fragmentShader: /* glsl */ `
-      uniform vec3 uSunDir, uSky, uGround, uRoot, uMid, uTip, uDry, uSheen, uLawnA, uLawnB, uForest, uForestLight, uFar;
+      uniform vec3 uSunDir, uSky, uGroundLight, uRoot, uMid, uTip, uDry, uSheen, uTrod, uLawn, uForest, uForestLight, uFar;
       varying vec3 vWorld;
       varying vec3 vNormal;
       ${simplex2D}
       ${windField}
-      ${lawnGLSL}
+      ${campGLSL}
       ${cloudGLSL}
+      ${lawnGLSL}
       #include <fog_pars_fragment>
       uniform float uVeil;
 
@@ -143,14 +144,18 @@ export function createTerrain() {
         float gust = gustField(p);
         meadow = mix(meadow, uSheen, gust * 0.32);
 
-        // --- mown lawn under the office, with stripes
-        float sdf = lawnSDF(p) + snoise(p * 0.45) * 0.35;
-        float lawn = 1.0 - smoothstep(-0.3, 0.7, sdf);
-        vec3 lawnCol = mix(uLawnB, uLawnA, stripe(p));
-        lawnCol *= 0.92 + fine * 0.12;
-        vec3 ground = mix(meadow, lawnCol, lawn);
-        // the soil between blades right at the meadow edge
-        ground = mix(ground, uRoot, smoothstep(0.7, 2.6, sdf) * (1.0 - smoothstep(2.6, 9.0, sdf)) * 0.25);
+        // --- the camp: the same meadow, cut shorter, and pressed flat where people go
+        vec4 marks = groundMarks(p);
+        float camp = 1.0 - smoothstep(0.0, 12.0, campSDF(p) + snoise(p * 0.09) * 4.0);
+        vec3 ground = mix(meadow, mix(uMid, uTip, 0.22 + pa2 * 0.12) * (0.84 + fine * 0.14), camp * 0.7);
+        // the mown floor: the lawn shows between the stubble, and half of it through the rough
+        float cutLine = marks.w + snoise(p * 2.6) * 0.06;
+        float mown = smoothstep(0.52, 0.62, cutLine);
+        float rough = smoothstep(0.2, 0.42, cutLine);
+        vec3 lawnGround = uLawn * (0.9 + fine * 0.1) * lawnTone(p);
+        ground = mix(ground, mix(ground, lawnGround, 0.45), rough);
+        ground = mix(ground, lawnGround, mown);
+        ground = mix(ground, uTrod * (0.8 + fine * 0.2), marks.y * 0.6 * (1.0 - mown * 0.5));
 
         // --- hills: forest canopy texture, clearings on gentle slopes
         float hgt = vWorld.y;
@@ -164,10 +169,10 @@ export function createTerrain() {
 
         // --- overcast lighting: mostly sky, a little sun
         float hemi = n.y * 0.5 + 0.5;
-        vec3 light = mix(uGround, uSky, hemi) * 1.05;
+        vec3 light = mix(uGroundLight, uSky, hemi) * 1.05;
         light += vec3(1.0, 0.96, 0.9) * max(dot(n, uSunDir), 0.0) * 0.35;
         col *= light;
-        col *= mix(0.55, 1.0, sampleAO(p));
+        col *= mix(0.55, 1.0, marks.x);
         col *= cloudShade(p);
 
         gl_FragColor = vec4(col, 1.0);

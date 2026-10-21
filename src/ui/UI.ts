@@ -99,7 +99,7 @@ export class UI {
     this.opening = new Opening($(this.root, '.opening'), exp, () => {
       document.body.classList.add('is-ready');
       exp.playIntro();
-      // the hint waits until the crane has put you down on the floor
+      // the hint waits until the crane has put you down in the camp
       setTimeout(() => document.body.classList.add('is-settled'), 3400);
     });
     requestAnimationFrame(this.frame);
@@ -147,8 +147,8 @@ export class UI {
         <div class="sheet__window paper" data-surface="paper">
           <div class="sheet__grabber" aria-hidden="true"></div>
           <header class="sheet__bar">
-            <button class="sheet__back" data-act="back" aria-label="Back to the floor">${chevronLeft}<span>Floor</span></button>
-            <nav class="sheet__step" aria-label="Walk the floor">
+            <button class="sheet__back" data-act="back" aria-label="Back to the field">${chevronLeft}<span>Field</span></button>
+            <nav class="sheet__step" aria-label="Walk the field">
               <button class="sheet__stepbtn" data-act="prev" aria-label="Previous desk">${chevronLeft}</button>
               <span class="sheet__count"></span>
               <button class="sheet__stepbtn" data-act="next" aria-label="Next desk">${chevronRight}</button>
@@ -184,7 +184,7 @@ export class UI {
             <span class="directory__mark">${wordmark()}</span>
             <button class="directory__close" data-act="directory-close" aria-label="Close index">Close<kbd>esc</kbd></button>
           </header>
-          <h2 class="directory__title">${em(`${words(filled)} projects on the *floor*.`)}</h2>
+          <h2 class="directory__title">${em(`${words(filled)} projects in the *field*.`)}</h2>
           <ol class="directory__list">
             ${this.exp.roster.map(({ project: p, desk }, i) => /* html */ `
               <li style="--i:${i}">
@@ -227,7 +227,7 @@ export class UI {
       <div class="opening" role="status">
         <div class="opening__ground"></div>
         <div class="opening__frame">
-          <p class="opening__beat">${em(`${words(total)} desks in an open *field*.`)}</p>
+          <p class="opening__beat">${em(`${words(total)} desks, carried out into a *field*.`)}</p>
           <p class="opening__beat">${em(`${words(filled)} of them are at *work*.`)}</p>
           <p class="opening__beat">${em(`The other ${lower(open)} are still *open*.`)}</p>
           <div class="opening__card">
@@ -499,7 +499,7 @@ export class UI {
         <h2 class="sheet__title" style="--i:1">Open desk</h2>
         <p class="label sheet__kind" style="--i:2">Reserved for the next project</p>
         <p class="sheet__tagline" style="--i:3">This one is waiting for yours.</p>
-        <p class="sheet__summary" style="--i:4">Every desk on this floor is a piece of work. This one is still empty — kept for a launch, a brand or a product that doesn’t exist yet.</p>
+        <p class="sheet__summary" style="--i:4">Every desk in this field is a piece of work. This one is set up and plugged in, and nobody’s sat at it yet — kept for a launch, a brand or a product that doesn’t exist yet.</p>
         <div class="sheet__actions" style="--i:5">
           <a class="btn btn--ink" href="mailto:${site.email}" data-pointer="lift"><span>Start a project</span>${arrowUpRight}</a>
         </div>

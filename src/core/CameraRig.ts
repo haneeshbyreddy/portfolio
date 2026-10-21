@@ -2,7 +2,7 @@ import { Vector2, Vector3 } from 'three';
 import { clamp, damp, easeInOutCubic, lerp, smoothstep } from './math';
 import type { ShiftCamera } from './ShiftCamera';
 import type { Desk } from '../office/Office';
-import { floorBounds } from '../office/layout';
+import { floorBounds, lineBounds } from '../office/layout';
 import { PHONE_SHOT } from '../office/Phones';
 import type { Device } from '../data/projects';
 
@@ -83,45 +83,57 @@ const give = (value: number, min: number, max: number, stretch: number, delta: n
   return over > 0 ? Math.max(0, 1 - over / stretch) ** 2 : 1;
 };
 
+const LINE = lineBounds();
+/** The middle of the working line, and its near edge (the chairs, the people in them). */
+const LINE_MID = new Vector3((LINE.x0 + LINE.x1) / 2, 0.8, (LINE.z0 + LINE.z1) / 2);
+const LINE_FRONT = new Vector3((LINE.x0 + LINE.x1) / 2, 0, LINE.z1 + 0.25);
+
 /**
- * Screen height (NDC y) of the near edge of the floor — the front row's
- * chairs — with the camera `d` from the pivot, `el` above it, the pivot held
- * at `y` on screen.
+ * Where a world point lands in the overview with the camera `d` from the
+ * home pivot, `el` above it, the pivot held at `y` on screen: its depth along
+ * the lens, and its height on screen (NDC y).
  */
-function frontEdgeY(d: number, fov: number, el: number, y: number) {
+function seen(p: Vector3, d: number, fov: number, el: number, y: number) {
   const tan = Math.tan((fov * Math.PI) / 360);
   const aim = el - Math.atan(-y * tan);
-  const below = Math.atan2(PIVOT_Y + Math.sin(el) * d, Math.cos(el) * d - HALF.z);
-  return -Math.tan(below - aim) / tan;
+  const cx = HOME.x, cy = PIVOT_Y + Math.sin(el) * d, cz = HOME.z + Math.cos(el) * d;
+  const vx = p.x - cx, vy = p.y - cy, vz = p.z - cz;
+  // forward (0, -sin aim, -cos aim), up (0, cos aim, -sin aim)
+  const depth = -vy * Math.sin(aim) - vz * Math.cos(aim);
+  const up = vy * Math.cos(aim) - vz * Math.sin(aim);
+  void vx;
+  return { depth, y: up / (depth * tan) };
 }
 
 /**
- * The establishing shot is a tableau (Tati's Playtime, Gursky's rows): frontal,
- * symmetrical, everything sharp. On a wide screen it's a standing view from
- * the edge of the floor on a ~35 mm lens, close enough that the front row of
- * five reads as people at work and the empty rows recede behind them, with
- * the treeline still in frame. A phone can't hold five desks across at that
- * size, so it rises to a plan view and the grid itself becomes the picture.
+ * The establishing shot looks at the camp the way you'd come on it over a
+ * rise: from a little above, on a ~35 mm lens, the working line big across
+ * the lower half of the frame, the empty desks, the lounge and the beanbags
+ * behind it, and the treeline still up there for the headline to sit on.
+ * The distance is fitted so the line fills the width with room either side
+ * and its chairs clear the bottom of the frame. A phone can't hold the line
+ * across at that size, so it rises toward a plan view instead.
  */
 function framingFor(aspect: number): Framing {
   // 0 = phone portrait, 1 = landscape
   const w = smoothstep(0.7, 1.3, aspect);
-  const fov = lerp(40, 37, w);
+  const fov = lerp(44, 43, w);
   const tan = Math.tan((fov * Math.PI) / 360);
-  const elFar = lerp(0.75, 0.31, w);
-  const yFar = lerp(-0.3, -0.32, w);
-  // back far enough that the front row (nearer than the pivot) fits across…
-  const halfWidth = lerp(HALF.x - 0.2, HALF.x + 0.9, w);
-  let far = halfWidth / (tan * aspect) + HALF.z - 0.3;
+  const elFar = lerp(0.78, 0.29, w);
+  const yFar = lerp(-0.12, -0.14, w);
+  // back far enough that the line (plus a little room either side) fits across…
+  const halfWidth = (LINE.x1 - LINE.x0) / 2 + lerp(-0.4, 0.15, w);
+  let far = 6;
+  while (seen(LINE_MID, far, fov, elFar, yFar).depth * tan * aspect < halfWidth && far < 80) far *= 1.01;
   // …and its chairs clear the bottom of the frame
-  const bottom = lerp(-0.75, -0.8, w);
-  while (frontEdgeY(far, fov, elFar, yFar) < bottom && far < 80) far *= 1.01;
+  const bottom = lerp(-0.7, -0.86, w);
+  while (seen(LINE_FRONT, far, fov, elFar, yFar).y < bottom && far < 80) far *= 1.01;
   return {
     fov,
     far,
-    near: lerp(9, 7.5, w),
+    near: lerp(8, 6.5, w),
     elFar,
-    elNear: lerp(0.6, 0.4, w),
+    elNear: lerp(0.62, 0.4, w),
     yFar,
     yNear: lerp(0.02, -0.04, w),
   };

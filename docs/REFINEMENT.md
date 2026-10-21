@@ -44,3 +44,41 @@ Where the mock stands after the first build (commit `7419661`, 2026-10-19), and 
 - **Shot.** A frontal tableau (Tati's *Playtime*, Gursky's rows, the Severance one-sheet). On wide screens it's a standing view from the edge of the floor on a ~35 mm lens (37° vertical), with the front row filling about 85% of the width. The distance comes from fitting both the width and the bottom edge, so 16:9 and ultrawide don't crop the chairs. On a phone, the shot rises to a plan view (about 43°, 40° lens).
 - **Light.** The meadow and hills lie under a thin cloud deck, with heavier patches drifting through on the wind. The office stands in a break, so the floor is the brightest thing in frame (`cloudGLSL`, also patched into the tree material).
 - **Lawn.** Mown to the floor plan: darker turf under each column and a light stripe down every aisle (`stripe()` in `shared.ts` reads `GRID`). Blade roots shade toward the turf instead of the soil, so the lawn reads as velvet rather than speckle.
+
+## The camp (2026-10-21)
+
+You shared a Gemini frame (desks scattered in long grass, beanbags, a parasol, dogs, bikes,
+cords) and asked for that vibe, "everybody in their comfort zone, cool startup vibe", made
+better rather than copied.
+
+- **Concept.** A studio that carried its desks out into a field: *Le Déjeuner sur l'herbe* /
+  Seurat's *Grande Jatte* rather than Severance. One rule dresses the set: everything was
+  carried out by someone, and everything electric runs off one orange cord, from behind the
+  camera along the path everyone walked in on, to a reel, to strips, to every desk.
+- **Plan.** The grid is gone. The five projects keep a readable line, left to right in roster
+  order, but loose: each desk at its own angle and depth, all facing the valley
+  (`LINE` in `src/office/layout.ts`). Five empty desks stand behind (`OPEN`), so the hero line is
+  now "Five at work. Five waiting for *yours*." Everything else is hand-placed in
+  `src/camp/plan.ts`.
+- **Ground.** You asked to "clean up intentionally where they're sitting and hanging out". A first try
+  mowed a separate room round each desk with corridors between; you didn't like the look, so the
+  whole camp now stands on one floor mown out of the meadow (the convex hull of everything set up,
+  plus a margin round each thing, blurred into a loose outline), with a band of rough at the edge
+  and a mown footpath in from behind the camera along the cord. A painted marks texture
+  (`GroundMarks`, `src/camp/Ground.ts`: shade, trodden, covered, mown) drives the grass and the
+  terrain; the lawn has a faint mottle and mowing stripes (`lawnGLSL` in `src/world/shared.ts`).
+- **People.** Casual wardrobe (knits, hoodies with hoods, overshirts over tees, tees with bare
+  forearms, denim, white sneakers; some bucket hats, backwards caps, beanies). New postures for
+  people off duty: camp chair, beanbag, cross-legged on the ground; pastimes: laptop, book, phone,
+  talk, rest, kite. At desks, a fourth way of sitting (ankle on the knee).
+- **Life.** Dogs (sculpted, skinned; they breathe, wag, flick an ear and look at your cursor),
+  a paper kite flown from a beanbag on the same wind as the grass, butterflies.
+- **Shot.** Re-derived: a 43° lens from a little above, fitted so the working line fills the width
+  and sits in the lower half, the empty desks and lounge climbing behind it toward the headline,
+  the treeline still in frame. The opening now starts on the way-in path: the cord snakes away
+  through the long grass toward a camp on the horizon, the kite above it.
+
+### Still open
+- Off-duty figures aren't clickable. The one out front on the beanbag could become *you*:
+  click them for About.
+- The kite and butterflies are deterministic loops, so they don't react to the cursor.

@@ -13,7 +13,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D, mulberry32, smoothstep } from '../core/math';
 import { simplex2D, windField } from '../core/glsl';
 import { MEADOW_CENTER, MEADOW_FLAT_RADIUS, terrainHeight } from './Terrain';
-import { cloudGLSL, lawnGLSL, shared } from './shared';
+import { campGLSL, cloudGLSL, shared } from './shared';
 
 const noise = createNoise2D(77);
 
@@ -109,16 +109,16 @@ export function createTrees(count: number) {
     Object.assign(shader.uniforms, {
       uTime: shared.uTime,
       uWindDir: shared.uWindDir,
-      uLawn: shared.uLawn,
-      uAO: shared.uAO,
-      uAOBounds: shared.uAOBounds,
+      uCamp: shared.uCamp,
+      uGround: shared.uGround,
+      uGroundBounds: shared.uGroundBounds,
       uCloud: shared.uCloud,
     });
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
         ${simplex2D}
         ${windField}
-        ${lawnGLSL}
+        ${campGLSL}
         ${cloudGLSL}
         varying float vCloud;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>

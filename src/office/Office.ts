@@ -1,9 +1,7 @@
 import {
   Box3,
-  CanvasTexture,
   Color,
   InstancedMesh,
-  LinearFilter,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -13,8 +11,8 @@ import {
 } from 'three';
 import { mulberry32 } from '../core/math';
 import { createScreenMaterial } from '../screens/ScreenMaterial';
-import { shared } from '../world/shared';
-import { buildStations, lawnBounds, FOOTPRINT, type Station } from './layout';
+import type { GroundMarks } from '../camp/Ground';
+import { buildStations, FOOTPRINT, type Station } from './layout';
 import { createOfficeMaterial, mat } from './builder';
 import {
   buildBooksGeometry,
@@ -172,53 +170,41 @@ export class Office {
     addStatic(buildPapersGeometry(), papers, 'papers');
     addStatic(buildBooksGeometry(), books, 'books');
 
-    this.bakeContactShadows();
     this.update();
   }
 
-  /** Soft overcast contact shadows painted under the furniture, read by grass + ground. */
-  private bakeContactShadows() {
-    const b = lawnBounds(6);
-    const S = 48; // px per metre
-    const W = Math.ceil((b.x1 - b.x0) * S);
-    const H = Math.ceil((b.z1 - b.z0) * S);
-    const canvas = document.createElement('canvas');
-    canvas.width = W;
-    canvas.height = H;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, W, H);
-
-    const shape = (blur: number, alpha: number, draw: () => void) => {
-      ctx.save();
-      ctx.shadowColor = `rgba(0,0,0,${alpha})`;
-      ctx.shadowBlur = blur;
-      ctx.fillStyle = `rgba(0,0,0,${alpha * 0.6})`;
-      draw();
-      ctx.restore();
-    };
-
-    // desks + chairs
+  /**
+   * What the desks leave on the ground: soft shade under the desk and chair,
+   * and grass flattened where someone has sat all day and pushed their chair
+   * back. Around an empty desk it's barely touched: it was only carried in.
+   */
+  mark(marks: GroundMarks) {
     for (const d of this.desks) {
-      const e = d.matrix.elements;
-      // station (x, z) → canvas: X = a x + c z + e, Y = b x + d z + f
-      ctx.setTransform(S * e[0], S * e[2], S * e[8], S * e[10], (e[12] - b.x0) * S, (e[14] - b.z0) * S);
-      shape(22, 0.5, () => ctx.fillRect(-0.62, 0.32, 1.5, 0.75));
-      shape(12, 0.55, () => ctx.fillRect(0.47, 0.36, 0.42, 0.68));
       const cx = d.chair.x, cz = d.chair.z;
-      shape(16, 0.45, () => {
-        ctx.beginPath();
-        ctx.arc(cx, cz, 0.3, 0, Math.PI * 2);
-        ctx.fill();
-      });
+      marks
+        .shadow(d.matrix, 0.5, 0.45, (ctx) => ctx.fillRect(-0.62, 0.32, 1.5, 0.75))
+        .shadow(d.matrix, 0.55, 0.25, (ctx) => ctx.fillRect(0.47, 0.36, 0.42, 0.68))
+        .shadow(d.matrix, 0.45, 0.32, (ctx) => {
+          ctx.beginPath();
+          ctx.arc(cx, cz, 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      // the drawer pedestal and the end panel stand flat on the ground
+      marks
+        .cover(d.matrix, (ctx) => ctx.fillRect(0.47, 0.36, 0.4, 0.68))
+        .cover(d.matrix, (ctx) => ctx.fillRect(-0.62, 0.36, 0.04, 0.68));
+      if (d.occupied) {
+        marks
+          .tread(d.matrix, 0.95, 0.35, (ctx) => {
+            ctx.beginPath();
+            ctx.ellipse(0, -0.12, 0.62, 0.72, 0, 0, Math.PI * 2);
+            ctx.fill();
+          })
+          .tread(d.matrix, 0.55, 0.45, (ctx) => ctx.fillRect(-0.55, 0.2, 1.4, 0.95));
+      } else {
+        marks.tread(d.matrix, 0.3, 0.5, (ctx) => ctx.fillRect(-0.6, -0.2, 1.5, 1.3));
+      }
     }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-    const tex = new CanvasTexture(canvas);
-    tex.minFilter = LinearFilter;
-    tex.generateMipmaps = false;
-    shared.uAO.value = tex;
-    shared.uAOBounds.value.set(b.x0, b.z0, b.x1, b.z1);
   }
 
   /** Push chair + mug transforms after workers have moved. */

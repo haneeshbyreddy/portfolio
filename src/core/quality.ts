@@ -4,7 +4,7 @@ export interface Quality {
   tier: Tier;
   dpr: number;
   meadowBlades: number;
-  lawnBlades: number;
+  campBlades: number;
   trees: number;
   shadows: boolean;
   shadowMapSize: number;
@@ -14,9 +14,9 @@ export interface Quality {
 }
 
 const presets: Record<Tier, Omit<Quality, 'tier' | 'dpr'> & { maxDpr: number }> = {
-  high: { maxDpr: 1.75, meadowBlades: 380_000, lawnBlades: 70_000, trees: 5200, shadows: true, shadowMapSize: 2048, ao: true, msaa: 4, tiltShift: true },
-  medium: { maxDpr: 1.5, meadowBlades: 190_000, lawnBlades: 40_000, trees: 3200, shadows: true, shadowMapSize: 1024, ao: false, msaa: 2, tiltShift: true },
-  low: { maxDpr: 1.25, meadowBlades: 70_000, lawnBlades: 18_000, trees: 1600, shadows: false, shadowMapSize: 512, ao: false, msaa: 0, tiltShift: false },
+  high: { maxDpr: 1.75, meadowBlades: 380_000, campBlades: 240_000, trees: 5200, shadows: true, shadowMapSize: 2048, ao: true, msaa: 4, tiltShift: true },
+  medium: { maxDpr: 1.5, meadowBlades: 190_000, campBlades: 120_000, trees: 3200, shadows: true, shadowMapSize: 1024, ao: false, msaa: 2, tiltShift: true },
+  low: { maxDpr: 1.25, meadowBlades: 70_000, campBlades: 45_000, trees: 1600, shadows: false, shadowMapSize: 512, ao: false, msaa: 0, tiltShift: false },
 };
 
 function gpuString(): string {

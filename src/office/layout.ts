@@ -1,60 +1,71 @@
 import { Matrix4, Vector3 } from 'three';
 
 /**
- * The floor plan: one even grid of single desks, every one facing away from
- * the establishing shot so each screen glows back at the camera over its
- * worker's shoulder. No partitions — just furniture on the lawn, and far more
- * desks than people. The people sit in a line along the front.
+ * The camp plan. The studio carried its desks out onto the grass and set them
+ * up the way people do on a picnic: nobody in rows, everyone facing the view.
+ * The projects sit in one loose line across the front, in roster order from
+ * left to right, each desk at its owner's own angle; the empty desks stand
+ * behind them, set up and plugged in, waiting. Everything else in the field
+ * (the lounge under the parasol, the beanbags, the bikes, the cord that
+ * powers it all) is in `src/camp/plan.ts`.
  *
- * Change the grid here and the field, lawn, shadows and slots all follow.
+ * A spot is the centre of a desk + chair footprint on the ground. `turn` is
+ * how far the desk is turned off facing straight up the valley, in radians,
+ * positive to the right as the establishing shot sees it.
  */
-export const GRID = {
-  cols: 5,
-  rows: 4,
-  /** Desk-to-desk pitch across a row (x) and between rows (z), in metres. */
-  pitchX: 2.55,
-  pitchZ: 3.0,
-  /** Floor centre on the ground. */
-  x: 0,
-  z: -0.9,
-};
+export interface Spot {
+  x: number;
+  z: number;
+  turn: number;
+}
+
+/** The front line: one desk per project, left to right. Ends angled in, toward the valley. */
+export const LINE: Spot[] = [
+  { x: -5.0, z: 0.85, turn: 0.42 },
+  { x: -2.5, z: -0.55, turn: 0.12 },
+  { x: 0.1, z: 0.5, turn: -0.18 },
+  { x: 2.6, z: -0.6, turn: 0.22 },
+  { x: 5.05, z: 0.7, turn: -0.45 },
+];
+
+/**
+ * The empty desks, behind the line. They were carried out and set up with
+ * the rest, at whatever angle their owner will want; nobody has worn the
+ * grass down around them yet.
+ */
+export const OPEN: Spot[] = [
+  { x: -4.05, z: -4.45, turn: -0.75 },
+  { x: -0.95, z: -5.45, turn: 0.35 },
+  { x: 2.65, z: -4.35, turn: -1.1 },
+  { x: -2.75, z: -9.4, turn: 0.9 },
+  { x: 3.25, z: -9.8, turn: -0.4 },
+];
 
 /** Desk + chair footprint in station space (x0, z0, x1, z1). */
 export const FOOTPRINT = { x0: -0.66, z0: -0.5, x1: 0.92, z1: 1.08 };
 
-const deskIndex = (row: number, col: number) => row * GRID.cols + col;
+const SPOTS = [...LINE, ...OPEN];
 
 /**
- * Desk indices in hiring order, covering every desk on the floor, for `hired`
- * projects. The projects line up side by side along the front row, centred,
- * in roster order from left to right as the establishing shot sees them; a
- * full row carries on, centred again, one row back. The empty desks follow,
- * row by row from the front, middle first.
+ * Desk indices in hiring order, covering every desk in the field, for `hired`
+ * projects. The projects take the front line, centred and in roster order from
+ * left to right; past five they carry on into the open desks behind. The
+ * empty desks follow, front first.
  */
 export function fillOrder(hired: number): number[] {
+  const n = Math.min(hired, LINE.length);
+  const start = Math.floor((LINE.length - n) / 2);
   const lined: number[] = [];
-  for (let r = 0; r < GRID.rows && lined.length < hired; r++) {
-    const n = Math.min(GRID.cols, hired - lined.length);
-    const start = Math.floor((GRID.cols - n) / 2);
-    for (let c = start; c < start + n; c++) lined.push(deskIndex(r, c));
-  }
-  const mid = (GRID.cols - 1) / 2;
-  const rest: number[] = [];
-  for (let r = 0; r < GRID.rows; r++) {
-    const row: number[] = [];
-    for (let c = 0; c < GRID.cols; c++) if (!lined.includes(deskIndex(r, c))) row.push(c);
-    row.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid));
-    rest.push(...row.map((c) => deskIndex(r, c)));
-  }
+  for (let i = start; i < start + n; i++) lined.push(i);
+  for (let i = LINE.length; i < SPOTS.length && lined.length < hired; i++) lined.push(i);
+  const rest = SPOTS.map((_, i) => i).filter((i) => !lined.includes(i));
   return [...lined, ...rest];
 }
 
 export interface Station {
-  /** Global desk number, 1-based, as shown in the UI (front-left first). */
+  /** Desk number, 1-based, as shown in the UI: the front line left to right, then the open desks. */
   number: number;
-  row: number;
-  col: number;
-  /** Station frame: origin on the floor under the chair, +Z toward the monitor. */
+  /** Station frame: origin on the ground under the chair, +Z toward the monitor. */
   matrix: Matrix4;
   position: Vector3;
   yaw: number;
@@ -63,50 +74,57 @@ export interface Station {
   left: Vector3;
 }
 
-/** Ground position of a grid cell: the centre of its desk + chair footprint. */
-function cellCenter(row: number, col: number) {
-  return {
-    x: GRID.x + (col - (GRID.cols - 1) / 2) * GRID.pitchX,
-    z: GRID.z + ((GRID.rows - 1) / 2 - row) * GRID.pitchZ,
-  };
+/** A frame on the ground at (x, z), facing up the valley (−Z) turned by `turn`. */
+export function spotMatrix(x: number, z: number, turn: number, y = 0) {
+  return new Matrix4().makeRotationY(Math.PI - turn).setPosition(x, y, z);
 }
 
 export function buildStations(): Station[] {
-  const stations: Station[] = [];
-  const yaw = Math.PI;
-  // the station origin is the chair; shift it so the whole footprint sits on the cell
+  // the station origin is the chair; shift it so the whole footprint sits on the spot
   const fx = (FOOTPRINT.x0 + FOOTPRINT.x1) / 2;
   const fz = (FOOTPRINT.z0 + FOOTPRINT.z1) / 2;
-  for (let row = 0; row < GRID.rows; row++) {
-    for (let col = 0; col < GRID.cols; col++) {
-      const c = cellCenter(row, col);
-      const m = new Matrix4().makeRotationY(yaw).setPosition(c.x + fx, 0, c.z + fz);
-      stations.push({
-        number: deskIndex(row, col) + 1,
-        row,
-        col,
-        matrix: m,
-        position: new Vector3().setFromMatrixPosition(m),
-        yaw,
-        forward: new Vector3(0, 0, 1).transformDirection(m),
-        left: new Vector3(1, 0, 0).transformDirection(m),
-      });
-    }
+  return SPOTS.map((s, i) => {
+    const m = spotMatrix(s.x, s.z, s.turn).multiply(new Matrix4().makeTranslation(-fx, 0, -fz));
+    return {
+      number: i + 1,
+      matrix: m,
+      position: new Vector3().setFromMatrixPosition(m),
+      yaw: Math.PI - s.turn,
+      forward: new Vector3(0, 0, 1).transformDirection(m),
+      left: new Vector3(1, 0, 0).transformDirection(m),
+    };
+  });
+}
+
+const RADIUS = Math.hypot(FOOTPRINT.x1 - FOOTPRINT.x0, FOOTPRINT.z1 - FOOTPRINT.z0) / 2;
+
+function boundsOf(spots: Spot[]) {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const s of spots) {
+    x0 = Math.min(x0, s.x - RADIUS);
+    x1 = Math.max(x1, s.x + RADIUS);
+    z0 = Math.min(z0, s.z - RADIUS);
+    z1 = Math.max(z1, s.z + RADIUS);
   }
-  return stations;
+  return { x0, z0, x1, z1 };
 }
 
-/** Axis-aligned bounds of the furnished floor (x0, z0, x1, z1), no margin. */
+/** Bounds of every desk (x0, z0, x1, z1): what the lens keeps sharp. */
 export function floorBounds() {
-  const hx = (FOOTPRINT.x1 - FOOTPRINT.x0) / 2;
-  const hz = (FOOTPRINT.z1 - FOOTPRINT.z0) / 2;
-  const a = cellCenter(GRID.rows - 1, 0);
-  const b = cellCenter(0, GRID.cols - 1);
-  return { x0: a.x - hx, z0: a.z - hz, x1: b.x + hx, z1: b.z + hz };
+  return boundsOf(SPOTS);
 }
 
-/** Axis-aligned bounds of the mown lawn around the office (x0, z0, x1, z1). */
-export function lawnBounds(margin = 3.2) {
+/** Bounds of the front line alone: the working desks the establishing shot is built around. */
+export function lineBounds() {
+  return boundsOf(LINE);
+}
+
+/**
+ * The camp: the desks and everything set up around them (x0, z0, x1, z1).
+ * The grass, the marks on the ground and the break in the cloud fit to it.
+ */
+export function campBounds(margin = 3.2) {
   const f = floorBounds();
-  return { x0: f.x0 - margin, z0: f.z0 - margin, x1: f.x1 + margin, z1: f.z1 + margin };
+  // the lounge and the beanbags sit out past the desks on either side
+  return { x0: f.x0 - 2.8 - margin, z0: f.z0 - margin, x1: f.x1 + 2.8 + margin, z1: f.z1 + 2.4 + margin };
 }

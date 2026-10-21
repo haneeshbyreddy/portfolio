@@ -27,10 +27,26 @@ import { PHONE_REST, PHONE_SHOT, type Phones } from './Phones';
 
 const SKIN = ['#f1cba8', '#e2ae87', '#c98d64', '#a46b47', '#7c4c32', '#5e3b27'];
 const HAIR = ['#1a1613', '#2a201a', '#45322a', '#6f4b30', '#a0703f', '#c9b48e'];
-const SUITS = ['#33373c', '#283044', '#474d55', '#3e4535', '#2c2f33'];
-const SHIRTS = ['#ecebe6', '#e3dfd3', '#48513b', '#d9d2c2'];
-const PANTS = ['#202328', '#2b3039', '#37465f', '#2a2c2e'];
-const TIES = ['#1d2c25', '#5b2a26', '#22293a', '#8a6a3a'];
+/**
+ * A studio on a day out: knits, hoodies, overshirts and tees in the colours
+ * of the field (oat, sage, olive, rust, ink), denim and chinos, white sneakers.
+ * Nobody's in a suit.
+ */
+const TOPS = [
+  { kind: 'hoodie', colors: ['#d6ccb6', '#9b9d99', '#3e4a37', '#b0542d', '#28304a', '#1e1f21'] },
+  { kind: 'knit', colors: ['#e6dfcc', '#c39a3e', '#8fa185', '#6b3a2c'] },
+  { kind: 'overshirt', colors: ['#5f6544', '#4c6a8a', '#b08a5a', '#c7c0ad'] },
+  { kind: 'tee', colors: ['#efeee8', '#1e1f21', '#c35a2c', '#7f8f78'] },
+] as const;
+type TopKind = (typeof TOPS)[number]['kind'];
+const PANTS = ['#33415c', '#6b84a3', '#1f2124', '#a89470', '#545a3c', '#c8bfa8'];
+const SHOES = ['#ecebe6', '#ecebe6', '#ecebe6', '#1d1e1f', '#9c6b3f', '#c35a2c'];
+const HATS = [
+  { kind: 'bucket', colors: ['#cdbf9e', '#efeee8', '#545a3c'] },
+  { kind: 'cap', colors: ['#28304a', '#e6dfcc', '#c35a2c'] },
+  { kind: 'beanie', colors: ['#b0542d', '#5f6544', '#9b9d99'] },
+] as const;
+type HatKind = (typeof HATS)[number]['kind'];
 const HAIRSTYLES = ['short', 'curly', 'bun', 'long', 'buzz'] as const;
 type HairStyle = (typeof HAIRSTYLES)[number];
 
@@ -38,10 +54,14 @@ interface Look {
   skin: Color;
   hair: Color;
   hairStyle: HairStyle;
+  topKind: TopKind;
   top: Color;
+  /** What shows at the neck: the tee under an overshirt, or the top itself. */
   shirt: Color;
   pants: Color;
-  tie: Color | null;
+  shoes: Color;
+  hat: HatKind | null;
+  hatColor: Color;
   headphones: boolean;
   headScale: Vector3;
   build: number;
@@ -50,17 +70,21 @@ interface Look {
 function lookFor(seed: number): Look {
   const r = mulberry32(seed);
   const pick = <T,>(a: readonly T[]) => a[Math.floor(r() * a.length)];
-  const suited = r() < 0.6;
-  const shirt = pick(SHIRTS);
+  const top = pick(TOPS);
+  const topColor = pick(top.colors);
+  const hat = r() < 0.38 ? pick(HATS) : null;
   return {
     skin: new Color(pick(SKIN)),
     hair: new Color(pick(HAIR)),
     hairStyle: pick(HAIRSTYLES),
-    top: new Color(suited ? pick(SUITS) : shirt),
-    shirt: new Color(suited ? '#efeee9' : shirt),
+    topKind: top.kind,
+    top: new Color(topColor),
+    shirt: new Color(top.kind === 'overshirt' ? pick(['#efeee8', '#1e1f21', '#d6ccb6']) : topColor),
     pants: new Color(pick(PANTS)),
-    tie: suited && r() < 0.75 ? new Color(pick(TIES)) : null,
-    headphones: r() < 0.3,
+    shoes: new Color(pick(SHOES)),
+    hat: hat?.kind ?? null,
+    hatColor: new Color(hat ? pick(hat.colors) : '#000'),
+    headphones: !hat && r() < 0.3,
     headScale: new Vector3(0.84 + r() * 0.05, 1.0 + r() * 0.06, 0.95),
     build: 0.94 + r() * 0.12,
   };
@@ -140,6 +164,49 @@ function headphonesGeometry() {
   return mergeGeometries(parts)!;
 }
 
+function merge(parts: BufferGeometry[]) {
+  return mergeGeometries(parts.map((g) => {
+    const q = g.index ? g.toNonIndexed() : g;
+    q.deleteAttribute('uv');
+    return q;
+  }))!;
+}
+
+/** Hats, in head space (head centre at the origin, face toward +Z). */
+function hatGeometry(kind: HatKind): BufferGeometry {
+  switch (kind) {
+    case 'bucket': {
+      // soft crown hugging the head, short brim turned down all round
+      const crown = new CylinderGeometry(0.093, 0.108, 0.07, 24, 1).translate(0, 0.058, -0.004);
+      const top = new SphereGeometry(0.093, 24, 6, 0, Math.PI * 2, 0, Math.PI * 0.2).scale(1, 0.32, 1).translate(0, 0.088, -0.004);
+      const brim = new CylinderGeometry(0.108, 0.15, 0.04, 28, 1, true).translate(0, 0.004, -0.004);
+      const under = new CylinderGeometry(0.15, 0.108, 0.04, 28, 1, true).scale(0.99, 1, 0.99).translate(0, 0.001, -0.004);
+      return merge([crown, top, brim, under]).rotateX(-0.1);
+    }
+    case 'cap': {
+      // worn backwards: the peak over the nape
+      const crown = capSphere(0.112, Math.PI * 0.42).scale(1, 0.92, 1);
+      const band = new CylinderGeometry(0.106, 0.11, 0.02, 24, 1, true).translate(0, 0.03, 0);
+      const peak = new CylinderGeometry(0.075, 0.075, 0.008, 24, 1, false, -Math.PI / 2, Math.PI)
+        .scale(1, 1, 1.3).translate(0, 0.03, -0.1).rotateX(-0.12);
+      const button = new SphereGeometry(0.012, 8, 6).translate(0, 0.104, 0);
+      return merge([crown, band, peak, button]).rotateX(-0.28).translate(0, 0.012, -0.004);
+    }
+    case 'beanie': {
+      const crown = capSphere(0.114, Math.PI * 0.56).scale(1, 1.14, 1);
+      const cuff = new TorusGeometry(0.106, 0.02, 8, 28).rotateX(Math.PI / 2).translate(0, -0.012, 0);
+      return merge([crown, cuff]).rotateX(-0.36).translate(0, 0.01, -0.006);
+    }
+  }
+}
+
+/** A hoodie's hood, bunched behind the neck. Torso space. */
+function hoodGeometry() {
+  const roll = new TorusGeometry(0.1, 0.042, 10, 24, Math.PI * 1.25).rotateX(Math.PI / 2).rotateY(-Math.PI * 0.125 - Math.PI / 2);
+  const back = new SphereGeometry(0.1, 16, 10).scale(1.15, 0.85, 0.55).translate(0, -0.02, -0.08);
+  return merge([roll.scale(1.1, 1, 0.9), back]);
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Behaviour                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -154,10 +221,81 @@ const STATES: { s: State; w: number; d: [number, number] }[] = [
   { s: 'sip', w: 0.9, d: [4.2, 4.6] },
   { s: 'look', w: 1, d: [2, 3.5] },
   { s: 'swivel', w: 0.7, d: [3, 5] },
-  { s: 'relax', w: 0.6, d: [4, 6] },
+  { s: 'relax', w: 0.8, d: [4, 7] },
   // only while a film is on (see `watching`)
   { s: 'watch', w: 0, d: [6, 10] },
 ];
+
+/**
+ * How someone sits. At a desk the chair takes them at desk height; out in the
+ * camp they've made themselves comfortable: a camp chair under the parasol,
+ * sunk into a beanbag, cross-legged on the blanket.
+ */
+export type Posture = 'desk' | 'campchair' | 'beanbag' | 'ground';
+/** What someone off-duty is doing with their hands. */
+export type Pastime = 'laptop' | 'book' | 'phone' | 'rest' | 'talk' | 'kite';
+
+/** Where someone sits: a desk, or anywhere in the camp. Station space: origin on the ground under the seat, +Z ahead. */
+export interface Seat {
+  matrix: Matrix4;
+  chair: { x: number; z: number; yaw: number };
+  hasMug: boolean;
+  mugOverride: Matrix4 | null;
+}
+
+export interface Sitter {
+  seat: Seat;
+  seed: string;
+  posture?: Posture;
+  pastime?: Pastime;
+  /** World point their head turns toward now and then (the friend in the next chair). */
+  company?: Vector3;
+}
+
+interface LegPose {
+  hip: [number, number, number];
+  knee: [number, number, number];
+  ankle: [number, number, number];
+  /** Shoe turn about the vertical and pitch (toes up < 0). */
+  shoeYaw?: number;
+  shoePitch?: number;
+}
+
+/** Pelvis height and position, and how far back the body settles, per posture. */
+const BODY: Record<Posture, { hipY: number; hipZ: number; recline: number }> = {
+  desk: { hipY: 0.5, hipZ: -0.02, recline: 0 },
+  campchair: { hipY: 0.47, hipZ: -0.09, recline: -0.26 },
+  beanbag: { hipY: 0.32, hipZ: 0.02, recline: -0.62 },
+  ground: { hipY: 0.085, hipZ: 0, recline: 0.06 },
+};
+
+/** Leg poses, left (side 1) then right (side -1), in station space before the chair turns. */
+function legsFor(posture: Posture, variant: number, side: number): LegPose {
+  const s = side;
+  switch (posture) {
+    case 'desk':
+      if (variant === 3 && s > 0) {
+        // ankle up on the other knee
+        return { hip: [0.092, 0.5, 0], knee: [0.3, 0.55, 0.3], ankle: [-0.06, 0.6, 0.42], shoeYaw: -1.35, shoePitch: 0.2 };
+      }
+      if (variant === 1) return { hip: [0.092 * s, 0.5, 0], knee: [0.1 * s, 0.49, 0.4], ankle: [-0.02 * s, 0.1 + (s > 0 ? 0.03 : 0), 0.36], shoeYaw: -0.25 * s };
+      if (variant === 2 && s < 0) return { hip: [0.092 * s, 0.5, 0], knee: [0.1 * s, 0.49, 0.44], ankle: [0.11 * s, 0.08, 0.62] };
+      return { hip: [0.092 * s, 0.5, 0], knee: [0.1 * s, 0.49, 0.4], ankle: [0.11 * s, 0.1, 0.44] };
+    case 'campchair':
+      // legs out, ankles crossed
+      return { hip: [0.09 * s, 0.47, -0.09], knee: [0.1 * s, 0.45, 0.31], ankle: [-0.025 * s, 0.12 + (s > 0 ? 0.04 : 0), 0.55], shoeYaw: -0.2 * s, shoePitch: -0.3 };
+    case 'beanbag':
+      if (variant % 2) {
+        // stretched out long
+        return { hip: [0.09 * s, 0.32, 0.02], knee: [0.11 * s, 0.4, 0.42], ankle: [0.12 * s, 0.1, 0.68], shoePitch: -0.85 };
+      }
+      // knees up, feet on the grass
+      return { hip: [0.09 * s, 0.32, 0.02], knee: [0.14 * s, 0.5, 0.36], ankle: [0.17 * s, 0.1, 0.46] };
+    case 'ground':
+      // cross-legged: knees out wide, ankles tucked in front
+      return { hip: [0.09 * s, 0.085, 0], knee: [0.37 * s, 0.11, 0.24], ankle: [-0.03 * s, 0.06, 0.31 + 0.03 * s], shoeYaw: 1.25 * s, shoePitch: 0.1 };
+  }
+}
 
 interface Pose {
   lean: number;
@@ -185,7 +323,10 @@ const ARM_B = 0.25;
 /* -------------------------------------------------------------------------- */
 
 interface Worker {
-  desk: Desk;
+  desk: Seat;
+  posture: Posture;
+  pastime: Pastime;
+  company: Vector3 | null;
   look: Look;
   rand: () => number;
   state: State;
@@ -196,8 +337,9 @@ interface Worker {
   legs: number;
   pose: Pose;
   target: Pose;
-  /** Live joint positions in station space (for mug hand-off). */
+  /** Live joint positions in station space (for mug hand-off, and the kite string). */
   wristL: Vector3;
+  wristR: Vector3;
   mugAttached: boolean;
   bob: number;
   /** "looking at camera" override when focused */
@@ -210,6 +352,9 @@ interface Worker {
   showTarget: number;
   /** A film is playing on their terminal: they lean back and watch. */
   watching: boolean;
+  /** Off-duty: an occasional glance at the friend in the next chair (0..1). */
+  chat: number;
+  chatTimer: number;
 }
 
 /**
@@ -238,10 +383,21 @@ const SHOW = (() => {
 const SHOW_UP = 1.5;
 const SHOW_DOWN = 1.15;
 
+/**
+ * Where off-duty hands go, in station space, for each posture: on a laptop on
+ * the lap, holding a book or a phone up, or laced behind the head.
+ */
+export const LAP = {
+  beanbag: { laptop: new Vector3(0, 0.49, 0.2), book: new Vector3(0, 0.74, 0.08), phone: new Vector3(0, 0.72, 0.06) },
+  campchair: { laptop: new Vector3(0, 0.56, 0.16), book: new Vector3(0, 0.8, 0.14), phone: new Vector3(0, 0.8, 0.12) },
+  ground: { laptop: new Vector3(0, 0.2, 0.3), book: new Vector3(0, 0.45, 0.28), phone: new Vector3(0, 0.44, 0.26) },
+  desk: { laptop: new Vector3(0, 0.76, 0.42), book: new Vector3(0, 0.95, 0.3), phone: new Vector3(0, 0.95, 0.3) },
+};
+
 type PartName =
-  | 'head' | 'ear' | 'neck' | 'torso' | 'collar' | 'tie' | 'pelvis'
+  | 'head' | 'ear' | 'neck' | 'torso' | 'collar' | 'hood' | 'pelvis'
   | 'thigh' | 'shin' | 'shoe' | 'upperArm' | 'forearm' | 'cuff' | 'hand' | 'headphones'
-  | `hair-${HairStyle}`;
+  | `hair-${HairStyle}` | `hat-${HatKind}`;
 
 const _m = new Matrix4();
 const _m2 = new Matrix4();
@@ -255,6 +411,7 @@ const _base = new Matrix4();
 const _torso = new Matrix4();
 const _head = new Matrix4();
 const ZERO = new Matrix4().makeScale(0, 0, 0);
+const HAT_KINDS = HATS.map((h) => h.kind);
 
 export class Workers {
   readonly workers: Worker[] = [];
@@ -263,27 +420,31 @@ export class Workers {
   private parts = new Map<PartName, InstancedMesh>();
   private readonly skinMat = new MeshStandardMaterial({ roughness: 0.62, metalness: 0 });
   private readonly clothMat = new MeshStandardMaterial({ roughness: 0.88, metalness: 0 });
-  private readonly gearMat = new MeshStandardMaterial({ roughness: 0.35, metalness: 0.4 });
+  private readonly gearMat = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.15 });
   private readonly hairMat = new MeshStandardMaterial({ roughness: 0.78, metalness: 0 });
 
-  constructor(root: Object3D, desks: { desk: Desk; seed: string }[], shadows: boolean) {
-    const n = desks.length;
-    desks.forEach(({ desk, seed }, i) => {
+  constructor(root: Object3D, sitters: Sitter[], shadows: boolean) {
+    const n = sitters.length;
+    sitters.forEach(({ seat, seed, posture = 'desk', pastime = 'rest', company }, i) => {
       const s = hashString(seed);
       const rand = mulberry32(s ^ 0x9e3779b9);
       const w: Worker = {
-        desk,
+        desk: seat,
+        posture,
+        pastime,
+        company: company ?? null,
         look: lookFor(s),
         rand,
-        state: 'type',
+        state: posture === 'desk' ? 'type' : 'relax',
         stateTime: rand() * 4,
         stateDur: 5 + rand() * 5,
         speed: 0.85 + rand() * 0.4,
         phase: rand() * 100,
-        legs: Math.floor(rand() * 3),
+        legs: Math.floor(rand() * 4),
         pose: newPose(),
         target: newPose(),
         wristL: new Vector3(),
+        wristR: new Vector3(),
         mugAttached: false,
         bob: 0,
         focused: 0,
@@ -292,8 +453,10 @@ export class Workers {
         show: 0,
         showTarget: 0,
         watching: false,
+        chat: 0,
+        chatTimer: 2 + rand() * 6,
       };
-      if (i % 3 === 1) w.state = 'mouse';
+      if (i % 3 === 1 && posture === 'desk') w.state = 'mouse';
       this.workers.push(w);
     });
 
@@ -313,40 +476,44 @@ export class Workers {
     add('neck', new CylinderGeometry(0.043, 0.05, 0.11, 14), this.skinMat, n);
     add('torso', torsoGeometry(), this.clothMat, n);
     add('collar', new RoundedBoxGeometry(0.1, 0.1, 0.03, 2, 0.008).rotateZ(Math.PI / 4), this.clothMat, n);
-    add('tie', new RoundedBoxGeometry(0.034, 0.17, 0.012, 2, 0.005), this.clothMat, n);
+    add('hood', hoodGeometry(), this.clothMat, n);
     add('pelvis', new RoundedBoxGeometry(0.3, 0.14, 0.3, 3, 0.06), this.clothMat, n);
     add('thigh', new CapsuleGeometry(0.068, 0.32, 6, 14), this.clothMat, n * 2);
     add('shin', new CapsuleGeometry(0.052, 0.34, 6, 12), this.clothMat, n * 2);
-    add('shoe', new RoundedBoxGeometry(0.09, 0.07, 0.25, 3, 0.03), this.gearMat, n * 2);
+    add('shoe', new RoundedBoxGeometry(0.095, 0.075, 0.26, 3, 0.034), this.gearMat, n * 2);
     add('upperArm', new CapsuleGeometry(0.05, ARM_A - 0.04, 6, 12), this.clothMat, n * 2);
     add('forearm', new CapsuleGeometry(0.043, ARM_B - 0.05, 6, 12), this.clothMat, n * 2);
     add('cuff', new CylinderGeometry(0.046, 0.046, 0.024, 14), this.clothMat, n * 2);
     add('hand', new RoundedBoxGeometry(0.064, 0.026, 0.086, 3, 0.012), this.skinMat, n * 2);
     add('headphones', headphonesGeometry(), this.gearMat, n);
     for (const style of HAIRSTYLES) add(`hair-${style}`, hairGeometry(style), this.hairMat, n);
+    for (const kind of HAT_KINDS) add(`hat-${kind}`, hatGeometry(kind), this.clothMat, n);
 
     // colours
     this.workers.forEach((w, i) => {
       const L = w.look;
+      // a tee's sleeves end at the elbow: forearms are skin
+      const forearm = L.topKind === 'tee' ? L.skin : L.top;
       this.color('head', i, L.skin);
       this.color('ear', i * 2, L.skin);
       this.color('ear', i * 2 + 1, L.skin);
       this.color('neck', i, L.skin);
       this.color('torso', i, L.top);
       this.color('collar', i, L.shirt);
-      this.color('tie', i, L.tie ?? L.shirt);
+      this.color('hood', i, L.top);
       this.color('pelvis', i, L.pants);
       for (const k of [0, 1]) {
         this.color('thigh', i * 2 + k, L.pants);
         this.color('shin', i * 2 + k, L.pants);
-        this.color('shoe', i * 2 + k, new Color('#17181a'));
+        this.color('shoe', i * 2 + k, L.shoes);
         this.color('upperArm', i * 2 + k, L.top);
-        this.color('forearm', i * 2 + k, L.top);
-        this.color('cuff', i * 2 + k, L.shirt);
+        this.color('forearm', i * 2 + k, forearm);
+        this.color('cuff', i * 2 + k, L.topKind === 'tee' ? L.skin : L.topKind === 'overshirt' ? L.shirt : L.top);
         this.color('hand', i * 2 + k, L.skin);
       }
       this.color('headphones', i, new Color(i % 2 ? '#c9cccd' : '#232526'));
       for (const style of HAIRSTYLES) this.color(`hair-${style}`, i, L.hair);
+      for (const kind of HAT_KINDS) this.color(`hat-${kind}`, i, L.hatColor);
     });
     for (const m of this.parts.values()) if (m.instanceColor) m.instanceColor.needsUpdate = true;
   }
@@ -356,22 +523,22 @@ export class Workers {
   }
 
   /** The hovered desk's worker glances up at the visitor. */
-  setHover(desk: Desk | null) {
+  setHover(desk: Seat | null) {
     for (const w of this.workers) w.noticeTarget = w.desk === desk ? 1 : 0;
   }
 
   /** Mark one worker as being looked at (camera over their shoulder). */
-  setFocus(desk: Desk | null) {
+  setFocus(desk: Seat | null) {
     for (const w of this.workers) w.focused = w.desk === desk ? 1 : 0;
   }
 
   /** The worker at `desk` holds their phone up for the visitor (or puts it back). */
-  setShowing(desk: Desk | null, on: boolean) {
+  setShowing(desk: Seat | null, on: boolean) {
     for (const w of this.workers) if (w.desk === desk) w.showTarget = on ? 1 : 0;
   }
 
   /** A film is on at `desk`: its worker sits back to watch. */
-  setWatching(desk: Desk | null, on: boolean) {
+  setWatching(desk: Seat | null, on: boolean) {
     for (const w of this.workers) {
       if (w.desk !== desk || w.watching === on) continue;
       w.watching = on;
@@ -381,17 +548,29 @@ export class Workers {
     }
   }
 
+  /** Where someone's hand is right now, in world space (1 = left, -1 = right). */
+  handOf(seat: Seat, side: 1 | -1, out = new Vector3()) {
+    const w = this.workers.find((x) => x.desk === seat);
+    if (!w) return out.setFromMatrixPosition(seat.matrix);
+    return out.copy(side > 0 ? w.wristL : w.wristR).applyMatrix4(seat.matrix);
+  }
+
   private eye = new Vector3();
 
   update(dt: number, time: number, cameraPos?: Vector3) {
     if (cameraPos) this.eye.copy(cameraPos);
     this.workers.forEach((w, i) => {
-      this.think(w, dt);
-      this.solve(w, dt, time);
+      if (w.posture === 'desk') {
+        this.think(w, dt);
+        this.solve(w, dt, time);
+      } else {
+        this.unwind(w, dt, time);
+      }
       this.write(w, i, time);
     });
     for (const m of this.parts.values()) m.instanceMatrix.needsUpdate = true;
   }
+
 
   /* ---------------- state machine ---------------- */
 
@@ -620,6 +799,114 @@ export class Workers {
     P.handR.lerp(T.handR, a);
   }
 
+  /* ---------------- off duty ---------------- */
+
+  /**
+   * Someone out in the camp: settled into their spot with a laptop, a book or
+   * a phone, or nothing at all; breathing, shifting, the odd glance at the
+   * friend in the next chair.
+   */
+  private unwind(w: Worker, dt: number, time: number) {
+    const T = w.target;
+    const k = time * w.speed + w.phase;
+    const B = BODY[w.posture];
+    const lap = LAP[w.posture];
+
+    T.lean = B.recline + Math.sin(k * 0.13) * 0.02;
+    T.twist = Math.sin(k * 0.07) * 0.04;
+    T.side = Math.sin(k * 0.11) * 0.02;
+    T.headYaw = Math.sin(k * 0.17) * 0.12;
+    T.headRoll = Math.sin(k * 0.09) * 0.05;
+    T.headPitch = 0.05;
+    T.swivel = 0;
+    T.rollBack = 0;
+    T.flare = 0;
+    // a reclined body has to bend its neck further to look down at its hands
+    const down = 0.32 - B.recline * 0.62;
+
+    switch (w.pastime) {
+      case 'laptop': {
+        const burst = smoothstep(0.1, 0.45, Math.sin(k * 0.8) * 0.5 + 0.5);
+        T.handL.copy(lap.laptop).add(_v.set(0.085, 0.025 + Math.pow(Math.max(0, Math.sin(k * 14)), 6) * 0.012 * burst, -0.03));
+        T.handR.copy(lap.laptop).add(_v.set(-0.085, 0.025 + Math.pow(Math.max(0, Math.sin(k * 14 + 2)), 6) * 0.012 * burst, -0.03));
+        T.headPitch = down + Math.sin(k * 0.5) * 0.04;
+        break;
+      }
+      case 'book': {
+        // a page every so often: the right hand sweeps across
+        const page = Math.max(0, Math.sin(k * 0.45)) > 0.985 ? 1 : 0;
+        T.handL.copy(lap.book).add(_v.set(0.1, -0.02, 0));
+        T.handR.copy(lap.book).add(_v.set(-0.1 + page * 0.12, -0.02 + page * 0.03, 0));
+        T.headPitch = down * 0.85 + Math.sin(k * 0.3) * 0.03;
+        break;
+      }
+      case 'phone': {
+        const tap = Math.pow(Math.max(0, Math.sin(k * 9)), 8) * 0.01;
+        T.handL.copy(lap.phone).add(_v.set(0.035, 0, 0));
+        T.handR.copy(lap.phone).add(_v.set(-0.035, tap, 0));
+        T.headPitch = down + 0.05;
+        break;
+      }
+      case 'talk': {
+        // hands loose, now and then a gesture
+        const g = smoothstep(0.6, 1, Math.sin(k * 0.6) * 0.5 + 0.5);
+        T.handL.copy(lap.laptop).add(_v.set(0.15, 0.02 + g * 0.16, 0.02 + g * 0.08));
+        T.handR.copy(lap.laptop).add(_v.set(-0.16, 0.0, -0.02));
+        T.headPitch = -B.recline * 0.85;
+        break;
+      }
+      case 'rest':
+        // hands laced behind the head: placed from the torso in `write`
+        T.flare = 1;
+        T.headPitch = -0.05 + Math.sin(k * 0.1) * 0.05;
+        break;
+      case 'kite': {
+        // one hand behind the head, the other up holding the string, giving
+        // it the odd tug; eyes on the kite
+        T.flare = 0.6;
+        const tug = Math.pow(Math.max(0, Math.sin(k * 0.7)), 12);
+        T.handR.set(-0.16, B.hipY + 0.62 + tug * 0.08, 0.3 - tug * 0.06);
+        T.handL.copy(T.handR);
+        T.headPitch = -0.35;
+        T.headYaw = -0.25;
+        break;
+      }
+    }
+
+    // the friend in the next chair
+    if (w.company) {
+      w.chatTimer -= dt;
+      if (w.chatTimer <= 0) w.chatTimer = w.chat > 0.5 ? 6 + w.rand() * 10 : 2 + w.rand() * 3;
+      const on = w.chatTimer < 3 && w.pastime !== 'laptop' ? 1 : w.pastime === 'talk' ? 0.85 : 0;
+      w.chat = damp(w.chat, on, 2.5, dt);
+      if (w.chat > 0.01) {
+        const local = _v3.copy(w.company).applyMatrix4(_m.copy(w.desk.matrix).invert());
+        const yaw = clamp(Math.atan2(local.x, local.z), -1.2, 1.2);
+        T.headYaw = lerp(T.headYaw, yaw * 0.8, w.chat);
+        T.twist = lerp(T.twist, yaw * 0.2, w.chat);
+        // a level gaze, whatever angle the chair has them at
+        T.headPitch = lerp(T.headPitch, -B.recline * 0.85, w.chat * 0.8);
+      }
+    }
+
+    // breathing, a little deeper lying back
+    T.lean += Math.sin(time * 1.3 + w.phase) * 0.012;
+
+    const P = w.pose;
+    P.lean = damp(P.lean, T.lean, 2.5, dt);
+    P.twist = damp(P.twist, T.twist, 2.5, dt);
+    P.side = damp(P.side, T.side, 2.5, dt);
+    P.headYaw = damp(P.headYaw, T.headYaw, 3, dt);
+    P.headPitch = damp(P.headPitch, T.headPitch, 3, dt);
+    P.headRoll = damp(P.headRoll, T.headRoll, 2.5, dt);
+    P.swivel = 0;
+    P.rollBack = 0;
+    P.flare = damp(P.flare, T.flare, 3, dt);
+    const a = 1 - Math.exp(-(w.pastime === 'laptop' ? 14 : 5) * dt);
+    P.handL.lerp(T.handL, a);
+    P.handR.lerp(T.handR, a);
+  }
+
   /* ---------------- rig → instance matrices ---------------- */
 
   private write(w: Worker, i: number, _time: number) {
@@ -627,6 +914,7 @@ export class Workers {
     const L = w.look;
     const desk = w.desk;
     const S = desk.matrix;
+    const B = BODY[w.posture];
 
     // chair frame: the worker sits on it, so it swivels and rolls with them
     desk.chair.x = 0;
@@ -641,7 +929,7 @@ export class Workers {
     const toStation = (v: Vector3) => v.applyMatrix4(_base);
 
     // pelvis + torso
-    const pelvis = _v.set(0, 0.5, -0.02);
+    const pelvis = _v.set(0, B.hipY, B.hipZ);
     _q.setFromAxisAngle(UP, P.twist);
     _q2.setFromAxisAngle(_v2.set(1, 0, 0), P.lean);
     _q.multiply(_q2);
@@ -649,14 +937,14 @@ export class Workers {
     _q.multiply(_q2);
     _torso.compose(pelvis.clone(), _q, _s.set(L.build, 1, L.build)).premultiply(_base);
 
-    _m2.compose(_v2.set(0, 0.52, -0.02), _q2.identity(), _s.set(L.build, 1, 1)).premultiply(_base);
+    _m2.compose(_v2.set(0, B.hipY + 0.02, B.hipZ), _q2.setFromAxisAngle(_v3.set(1, 0, 0), B.recline * 0.45), _s.set(L.build, 1, 1)).premultiply(_base);
     set('pelvis', i, _m2);
     set('torso', i, _torso);
 
-    // shirt V + tie on the chest
+    // what shows at the neck: the tee under an overshirt, a knit's ribbed collar
     set('collar', i, _m2.copy(_torso).multiply(_m.compose(_v2.set(0, 0.47, 0.098), _q2.setFromAxisAngle(_v3.set(1, 0, 0), -0.35), _s.set(1, 1, 1))));
-    if (L.tie) set('tie', i, _m2.copy(_torso).multiply(_m.compose(_v2.set(0, 0.36, 0.11), _q2.setFromAxisAngle(_v3.set(1, 0, 0), -0.12), _s.set(1, 1, 1))));
-    else this.parts.get('tie')!.setMatrixAt(i, ZERO);
+    if (L.topKind === 'hoodie') set('hood', i, _m2.copy(_torso).multiply(_m.compose(_v2.set(0, 0.5, -0.07), _q2.setFromAxisAngle(_v3.set(1, 0, 0), 0.25), _s.set(L.build, 1, 1))));
+    else this.parts.get('hood')!.setMatrixAt(i, ZERO);
 
     // neck + head
     const neckBase = new Vector3(0, 0.5, 0).applyMatrix4(_torso);
@@ -673,12 +961,25 @@ export class Workers {
     const ex = 0.1 * L.headScale.x - 0.006;
     set('ear', i * 2, _m2.copy(_head).multiply(_m.makeTranslation(ex, -0.008, -0.004)));
     set('ear', i * 2 + 1, _m2.copy(_head).multiply(_m.makeTranslation(-ex, -0.008, -0.004)));
+    // under a hat, long hair still falls out the back; everything else is tucked away
+    const hair = L.hat ? (L.hairStyle === 'long' ? 'long' : 'short') : L.hairStyle;
     for (const style of HAIRSTYLES) {
-      if (style === L.hairStyle) set(`hair-${style}`, i, _m2.copy(_head).multiply(_m.makeScale(L.headScale.x * 1.03, L.headScale.y * 1.01, L.headScale.z * 1.03)));
+      if (style === hair) set(`hair-${style}`, i, _m2.copy(_head).multiply(_m.makeScale(L.headScale.x * 1.03, L.headScale.y * 1.01, L.headScale.z * 1.03)));
       else this.parts.get(`hair-${style}`)!.setMatrixAt(i, ZERO);
+    }
+    for (const kind of HAT_KINDS) {
+      if (kind === L.hat) set(`hat-${kind}`, i, _m2.copy(_head).multiply(_m.makeScale(L.headScale.x * 1.04, L.headScale.y * 1.02, L.headScale.z * 1.06)));
+      else this.parts.get(`hat-${kind}`)!.setMatrixAt(i, ZERO);
     }
     if (L.headphones) set('headphones', i, _m2.copy(_head).multiply(_m.makeScale(L.headScale.x * 1.06, L.headScale.y, L.headScale.z)));
     else this.parts.get('headphones')!.setMatrixAt(i, ZERO);
+
+    // hands laced behind the head, wherever the head has got to
+    if (w.posture !== 'desk' && (w.pastime === 'rest' || w.pastime === 'kite')) {
+      const r = w.pastime === 'rest' ? P.flare : 1;
+      P.handL.lerp(_v2.set(0.07, 0.72, -0.15).applyMatrix4(_torso), r);
+      if (w.pastime === 'rest') P.handR.lerp(_v2.set(-0.07, 0.72, -0.15).applyMatrix4(_torso), r);
+    }
 
     // arms (2-bone IK, station space)
     for (const side of [1, -1]) {
@@ -688,7 +989,7 @@ export class Workers {
       const pole = new Vector3(side * (0.45 + P.flare * 1.2), -0.7 + P.flare * 0.8, -0.55 + P.flare * 0.2)
         .applyQuaternion(_q.setFromRotationMatrix(_torso));
       const { elbow, wrist } = solveIK(shoulder, target, pole, ARM_A, ARM_B);
-      if (side > 0) w.wristL.copy(wrist);
+      (side > 0 ? w.wristL : w.wristR).copy(wrist);
 
       setSegment(this.parts.get('upperArm')!, idx, shoulder, elbow, S);
       setSegment(this.parts.get('forearm')!, idx, elbow, wrist, S);
@@ -707,34 +1008,31 @@ export class Workers {
       set('hand', idx, _m2);
     }
 
-    // legs (fixed seated pose, three variants)
+    // legs: set by the posture (and at a desk, one of four ways of sitting)
     for (const side of [1, -1]) {
       const idx = i * 2 + (side > 0 ? 0 : 1);
-      const crossed = w.legs === 1;
-      const stretched = w.legs === 2 && side < 0;
-      const hip = toStation(new Vector3(0.092 * side, 0.5, 0.0));
-      const knee = toStation(new Vector3(0.1 * side, 0.49, stretched ? 0.44 : 0.4));
-      const ankle = toStation(new Vector3(
-        crossed ? -0.02 * side : 0.11 * side,
-        stretched ? 0.08 : 0.1 + (crossed && side > 0 ? 0.03 : 0),
-        stretched ? 0.62 : crossed ? 0.36 : 0.44,
-      ));
+      // a laptop wants knees up to sit on
+      const leg = legsFor(w.posture, w.pastime === 'laptop' ? 0 : w.legs, side);
+      const hip = toStation(new Vector3(...leg.hip));
+      const knee = toStation(new Vector3(...leg.knee));
+      const ankle = toStation(new Vector3(...leg.ankle));
       setSegment(this.parts.get('thigh')!, idx, hip, knee, S);
       setSegment(this.parts.get('shin')!, idx, knee, ankle, S);
-      _q.setFromAxisAngle(UP, P.swivel + (crossed ? -0.25 * side : 0));
-      _m2.compose(_v2.copy(ankle).add(_v3.set(0, -0.06, 0.06)), _q, _s.set(1, 1, 1));
+      _q.setFromAxisAngle(UP, P.swivel + (leg.shoeYaw ?? 0));
+      _q.multiply(_q2.setFromAxisAngle(_v3.set(1, 0, 0), leg.shoePitch ?? 0));
+      _m2.compose(_v2.copy(ankle).add(_v3.set(0, -0.055, 0.06).applyQuaternion(_q)), _q, _s.set(1, 1, 1));
       set('shoe', idx, _m2);
     }
 
     // the phone: in its stand, or in the left hand
-    if (this.phones?.get(desk)) {
+    if (this.phones?.get(desk as Desk)) {
       const sh = w.show;
       const grip = smoothstep(0.26, 0.34, sh);
       const lift = smoothstep(0.32, 1.0, sh);
       _v2.copy(SHOW.offGrab).lerp(SHOW.offHold, lift).add(w.wristL);
       _v2.lerpVectors(PHONE_REST.center, _v2, grip);
       _q.copy(PHONE_REST.quat).slerp(SHOW.holdQ, lift);
-      this.phones.place(desk, _m2.compose(_v2, _q, _s.set(1, 1, 1)).premultiply(S));
+      this.phones.place(desk as Desk, _m2.compose(_v2, _q, _s.set(1, 1, 1)).premultiply(S));
     }
 
     // mug in hand

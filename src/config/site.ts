@@ -18,5 +18,5 @@ export const site = {
   ],
   /** The About page: a lead line, then the rest. */
   about: 'An independent designer-engineer building brands, websites and products that feel considered down to the last *pixel*.',
-  aboutMore: 'This floor is the body of work: every desk a project, every empty one an invitation.',
+  aboutMore: 'This field is the body of work: every desk a project, every empty one an invitation.',
 };

@@ -40,7 +40,9 @@ import { shared } from '../world/shared';
 import { Office, type Desk } from '../office/Office';
 import { Workers } from '../office/Workers';
 import { PHONE, Phones } from '../office/Phones';
-import { fillOrder, floorBounds } from '../office/layout';
+import { campBounds, fillOrder, floorBounds } from '../office/layout';
+import { Camp } from '../camp/Camp';
+import { GroundMarks } from '../camp/Ground';
 import { SCREEN } from '../office/parts';
 import { Screens } from '../screens/Screens';
 import { Library } from '../screens/Library';
@@ -74,6 +76,7 @@ export class Experience {
   readonly office: Office;
   readonly workers: Workers;
   readonly phones: Phones;
+  readonly camp: Camp;
   readonly screens: Screens;
   readonly library: Library;
   /** Which of the focused project's media is on show. */
@@ -91,10 +94,12 @@ export class Experience {
   private floorHull = (() => {
     const f = floorBounds();
     const pts: Vector3[] = [];
-    for (const x of [f.x0, f.x1]) for (const z of [f.z0, f.z1]) for (const y of [0, 1.45]) pts.push(new Vector3(x, y, z));
+    // out to the beanbag and the dog in front of the line
+    for (const x of [f.x0, f.x1]) for (const z of [f.z0, f.z1 + 1.6]) for (const y of [0, 1.45]) pts.push(new Vector3(x, y, z));
     return pts;
   })();
   private _v = new Vector3();
+  private _attention = new Vector3();
   private _ray = new Ray();
   private _inv = new Matrix4();
   private world: ReturnType<typeof createWorld>;
@@ -145,8 +150,22 @@ export class Experience {
       this.roster.push({ project: p, desk });
     });
     this.phones = new Phones(this.office.root, [...handsets].map((i) => this.office.desks[i]), this.office.material, q.shadows);
-    this.workers = new Workers(this.office.root, this.roster.map(({ desk, project }) => ({ desk, seed: project.id })), q.shadows);
+    this.camp = new Camp(this.office.root, this.office.desks, q.shadows, this.office.material);
+    this.workers = new Workers(
+      this.office.root,
+      [...this.roster.map(({ desk, project }) => ({ seat: desk, seed: project.id })), ...this.camp.sitters],
+      q.shadows,
+    );
     this.workers.phones = this.phones;
+    this.camp.fly((seat) => this.workers.handOf(seat, -1));
+
+    // the marks everything leaves on the ground, from the camp out along the way in
+    const c = campBounds();
+    const marks = new GroundMarks({ x0: c.x0 - 4, z0: c.z0 - 4, x1: c.x1 + 4, z1: 70 });
+    this.office.mark(marks);
+    this.camp.mark(marks);
+    marks.bake();
+
     this.library = new Library(q.tier === 'low');
     this.screens = new Screens(this.office.desks, this.assignment, this.library, this.phones, q.tier === 'low' ? [384, 288] : [512, 384]);
 
@@ -207,7 +226,7 @@ export class Experience {
       radius: 0.68,
     });
     const tone = new ToneMappingEffect({ mode: ToneMappingMode.NEUTRAL });
-    const hue = new HueSaturationEffect({ saturation: -0.08 });
+    const hue = new HueSaturationEffect({ saturation: 0.02 });
     const contrast = new BrightnessContrastEffect({ brightness: 0.0, contrast: 0.07 });
     const vignette = new VignetteEffect({ darkness: 0.52, offset: 0.26 });
     const noise = new NoiseEffect({ premultiply: true, blendFunction: BlendFunction.SCREEN });
@@ -562,10 +581,13 @@ export class Experience {
     this.rig.update(dt);
     this.workers.update(dt, time, this.camera.position);
     this.office.update();
+    this.camp.update(dt, time);
     this.screens.update(dt, time);
 
     this.cursorStrength = damp(this.cursorStrength, this.pointerInside ? this.cursorTarget : 0, 4, dt);
     shared.uCursor.value.y = this.cursorStrength;
+    // dogs that are awake keep half an eye on the cursor
+    this.camp.attention = this.cursorStrength > 0.3 && this.rig.mode === 'overview' ? this._attention.set(shared.uCursor.value.x, 0, shared.uCursor.value.z) : null;
 
     if (this.tilt) {
       const t = this.tilt;

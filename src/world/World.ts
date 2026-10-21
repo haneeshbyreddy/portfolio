@@ -33,8 +33,8 @@ export function createWorld(scene: Scene, renderer: WebGLRenderer, quality: Qual
   const terrain = createTerrain();
   scene.add(terrain.mesh);
 
-  const grass = createGrass({ meadowCount: quality.meadowBlades, lawnCount: quality.lawnBlades });
-  scene.add(grass.meadow, grass.lawn);
+  const grass = createGrass({ meadowCount: quality.meadowBlades, campCount: quality.campBlades });
+  scene.add(grass.meadow, grass.camp);
 
   const trees = createTrees(quality.trees);
 
