@@ -43,11 +43,9 @@ surface carries grain.
 - **Sound.** On by default; browsers hold it until the visitor's first click, tap or key, and a
   visitor who turns it off stays off on return. An original boom-bap instrumental
   (`public/audio/score.m4a`: 78 bars at 88 BPM, cut on bar lines with a crossfade so it comes round
-  without a seam, streamed) over the meadow: a 30 s wind-in-grass loop and three distant larks, made
-  with ElevenLabs sound effects (`wind.m4a`, `lark-*.m4a`, loaded only once sound is playing). The
-  score is muffled in the fog and opens as it lifts, and steps back when a film or reel speaks. Levels
-  are set from measured loudness: score and films near −22 LUFS (films a touch under at the desk),
-  the meadow about 13 dB below. Films and reels are mastered near −16 LUFS; keep new ones there.
+  without a seam, streamed). The score is muffled in the fog and opens as it lifts, and steps back
+  when a film or reel speaks. Levels are set from measured loudness: score and films near −22 LUFS
+  (films a touch under at the desk). Films and reels are mastered near −16 LUFS; keep new ones there.
 
 ## Run
 

@@ -296,7 +296,6 @@ export class UI {
       this.focusedProject = project;
       clearTimeout(this.arriveTimer);
       document.body.classList.remove('is-arrived');
-      this.audio.setFocus(!!desk);
       if (desk) {
         this.hintSpent = true;
         clearTimeout(this.tagHide);
